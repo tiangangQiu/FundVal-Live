@@ -4,30 +4,42 @@ import { getAccountPositions, updatePosition, deletePosition } from '../services
 import { getRateColor } from '../components/StatCard';
 import { PortfolioChart } from '../components/PortfolioChart';
 
-const Account = ({ onSelectFund, onPositionChange, onSyncWatchlist }) => {
+const Account = ({ onSelectFund, onPositionChange, onSyncWatchlist, syncLoading }) => {
   const [data, setData] = useState({ summary: {}, positions: [] });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPos, setEditingPos] = useState(null);
 
   // Form State
   const [formData, setFormData] = useState({ code: '', cost: '', shares: '' });
 
-  const fetchData = async () => {
+  const fetchData = async (retryCount = 0) => {
     setLoading(true);
+    setError(null);
     try {
       const res = await getAccountPositions();
       setData(res);
     } catch (e) {
       console.error(e);
-      alert('加载账户数据失败');
+
+      // Retry logic: retry up to 2 times with exponential backoff
+      if (retryCount < 2) {
+        const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s
+        console.log(`Retrying in ${delay}ms... (attempt ${retryCount + 1}/2)`);
+        setTimeout(() => fetchData(retryCount + 1), delay);
+      } else {
+        setError('加载账户数据失败，请检查后端服务是否启动');
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
+    // Delay initial fetch to give backend time to start
+    const timer = setTimeout(() => fetchData(), 500);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleOpenModal = (pos = null) => {
@@ -82,6 +94,28 @@ const Account = ({ onSelectFund, onPositionChange, onSyncWatchlist }) => {
 
   return (
     <div className="space-y-6">
+      {/* Error Banner */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="text-red-600">
+              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-red-800">{error}</p>
+            </div>
+          </div>
+          <button
+            onClick={() => fetchData()}
+            className="text-sm font-medium text-red-600 hover:text-red-700 underline"
+          >
+            重试
+          </button>
+        </div>
+      )}
+
       {/* 1. Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <SummaryCard 
@@ -118,13 +152,14 @@ const Account = ({ onSelectFund, onPositionChange, onSyncWatchlist }) => {
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-slate-800">持仓明细</h2>
         <div className="flex gap-2">
-            <button 
+            <button
               onClick={handleSync}
-              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+              disabled={syncLoading}
+              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               title="将持仓基金添加到关注列表"
             >
-              <RefreshCw className="w-4 h-4" />
-              同步关注
+              <RefreshCw className={`w-4 h-4 ${syncLoading ? 'animate-spin' : ''}`} />
+              {syncLoading ? '同步中...' : '同步关注'}
             </button>
             <button 
               onClick={() => handleOpenModal()}

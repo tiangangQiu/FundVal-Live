@@ -19,7 +19,18 @@ export default function App() {
   const [watchlist, setWatchlist] = useState(() => {
     try {
       const saved = localStorage.getItem('fundval_watchlist');
-      return saved ? JSON.parse(saved) : [];
+      if (!saved) return [];
+
+      const parsed = JSON.parse(saved);
+      // Deduplicate by id
+      const seen = new Set();
+      const deduped = parsed.filter(fund => {
+        if (seen.has(fund.id)) return false;
+        seen.add(fund.id);
+        return true;
+      });
+
+      return deduped;
     } catch (e) {
       console.error("Failed to load watchlist", e);
       return [];
@@ -177,37 +188,44 @@ export default function App() {
     }
   };
 
+  const [syncLoading, setSyncLoading] = useState(false);
+
   const handleSyncWatchlist = async (positions) => {
       if (!positions || positions.length === 0) return;
-      
+      if (syncLoading) return; // Prevent duplicate clicks
+
       const existingIds = new Set(watchlist.map(f => f.id));
       const newFunds = positions.filter(p => !existingIds.has(p.code));
-      
+
       if (newFunds.length === 0) {
           alert('所有持仓已在关注列表中');
           return;
       }
-      
-      setLoading(true);
+
+      setSyncLoading(true);
       try {
-          const addedFunds = [];
-          for (const pos of newFunds) {
-              try {
-                  const detail = await getFundDetail(pos.code);
-                  addedFunds.push({ ...detail, trusted: true });
-              } catch (e) {
-                  console.error(`Failed to sync ${pos.code}`, e);
-              }
-          }
-          
-          if (addedFunds.length > 0) {
-              setWatchlist(prev => [...prev, ...addedFunds]);
-              alert(`成功同步 ${addedFunds.length} 个基金到关注列表`);
+          const addedFunds = await Promise.all(
+              newFunds.map(async (pos) => {
+                  try {
+                      const detail = await getFundDetail(pos.code);
+                      return { ...detail, trusted: true };
+                  } catch (e) {
+                      console.error(`Failed to sync ${pos.code}`, e);
+                      return null;
+                  }
+              })
+          );
+
+          const validFunds = addedFunds.filter(f => f !== null);
+
+          if (validFunds.length > 0) {
+              setWatchlist(prev => [...prev, ...validFunds]);
+              alert(`成功同步 ${validFunds.length} 个基金到关注列表`);
           }
       } catch (e) {
           alert('同步失败');
       } finally {
-          setLoading(false);
+          setSyncLoading(false);
       }
   };
 
@@ -305,10 +323,11 @@ export default function App() {
         )}
 
         {currentView === 'account' && (
-           <Account 
-                onSelectFund={handleCardClick} 
+           <Account
+                onSelectFund={handleCardClick}
                 onPositionChange={notifyPositionChange}
                 onSyncWatchlist={handleSyncWatchlist}
+                syncLoading={syncLoading}
            />
         )}
 

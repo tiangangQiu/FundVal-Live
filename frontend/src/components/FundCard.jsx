@@ -1,8 +1,17 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertCircle, Bell, Trash2, Clock, Activity } from 'lucide-react';
 import { StatCard, getRateColor } from './StatCard';
 
 export const FundCard = ({ fund, onClick, onRemove, onSubscribe }) => {
+  const [removing, setRemoving] = useState(false);
+
+  const handleRemove = (e) => {
+    e.stopPropagation();
+    if (removing) return; // Prevent duplicate clicks
+    setRemoving(true);
+    onRemove(fund.id);
+  };
+
   return (
     <div 
       onClick={() => {
@@ -35,9 +44,10 @@ export const FundCard = ({ fund, onClick, onRemove, onSubscribe }) => {
           >
             <Bell className="w-5 h-5" />
           </button>
-          <button 
-            onClick={(e) => { e.stopPropagation(); onRemove(fund.id); }}
-            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors z-10"
+          <button
+            onClick={handleRemove}
+            disabled={removing}
+            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-colors z-10 disabled:opacity-50 disabled:cursor-not-allowed"
             title="删除"
           >
             <Trash2 className="w-5 h-5" />
