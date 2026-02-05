@@ -395,7 +395,7 @@ export default function App() {
             rel="noopener noreferrer"
             className="hover:text-blue-600 transition-colors"
           >
-            MIT License
+            AGPL-3.0
           </a>
           <span>·</span>
           <a

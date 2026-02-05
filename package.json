@@ -4,7 +4,7 @@
   "description": "盘中基金实时估值与逻辑审计系统",
   "main": "electron/main.js",
   "author": "Jasmine",
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "homepage": "https://github.com/Ye-Yu-Mo/FundVal-Live",
   "repository": {
     "type": "git",

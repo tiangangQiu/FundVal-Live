@@ -121,7 +121,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           body: |
-            ## 📦 安装包下载
+            ## 安装包下载
 
             ### macOS
             - **Apple Silicon (M1/M2/M3)**: `FundVal-Live-*-arm64.dmg`
@@ -134,24 +134,42 @@ jobs:
             - **AppImage**: `FundVal-Live-*.AppImage`
             - **Debian/Ubuntu**: `fundval-live_*_amd64.deb`
 
-            ## 🚀 使用说明
+            ## 本次更新
+
+            ### 新增功能
+            - 在 header 和 footer 添加 GitHub 链接，方便用户找到项目源码
+            - 添加项目信息 API 端点 (/api/info)
+            - 统一版本号管理，前后端动态读取 package.json 版本号
+
+            ### 问题修复
+            - 修复页面切换后账户数据不刷新的问题
+            - 修复 Windows 启动崩溃问题（缺少 cryptography 模块）
+            - 修复版本号不一致问题（package.json vs git tag vs 文件名）
+
+            ### 协议变更
+            - 开源协议从 MIT 变更为 AGPL-3.0
+            - 确保金融工具的透明度和社区贡献回流
+
+            ## 使用说明
 
             1. 下载对应平台的安装包
             2. 双击安装
             3. 启动应用即可使用
 
-            ## 📝 更新内容
+            数据存储位置：
+            - 数据库：`~/.fundval-live/data/fund.db`
+            - 日志：`~/.fundval-live/logs/`
 
-            - 完整的桌面应用支持
-            - 自动更新后端和前端
-            - 数据存储在 `~/.fundval-live/`
-            - 日志文件在 `~/.fundval-live/logs/`
-
-            ## ⚠️ 注意事项
+            ## 注意事项
 
             - macOS 首次打开可能提示"无法验证开发者"，请在系统偏好设置 → 安全性与隐私中允许
             - Windows 可能提示 SmartScreen，点击"更多信息"→"仍要运行"
             - Linux AppImage 需要添加执行权限：`chmod +x FundVal-Live-*.AppImage`
+
+            ## 开源协议
+
+            本项目采用 AGPL-3.0 协议开源。如果你使用本项目代码提供网络服务，必须开源你的修改。
+            详见：https://github.com/Ye-Yu-Mo/FundVal-Live/blob/main/LICENSE
           files: |
             macos-build/*
             windows-build/*
