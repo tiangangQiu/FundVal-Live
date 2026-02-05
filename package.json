@@ -23,6 +23,7 @@
   "build": {
     "appId": "com.fundval.live",
     "productName": "FundVal Live",
+    "publish": null,
     "directories": {
       "output": "release"
     },
