@@ -31,14 +31,27 @@ export const PortfolioChart = ({ positions, summary, loading, onRefresh }) => {
   const dataMap = {};
 
   positions.forEach(p => {
-    let type = p.type || "其他";
+    let type = p.type || "未知";
 
-    if (!p.type) {
-        if (p.name.includes("债")) type = "债券";
-        else if (p.name.includes("指数") || p.name.includes("ETF") || p.name.includes("股票")) type = "权益";
-        else if (p.name.includes("货币")) type = "货币";
-        else if (p.name.includes("QDII") || p.name.includes("美") || p.name.includes("纳斯达克")) type = "QDII";
-        else type = "混合/其他";
+    // Map to major categories
+    if (type.includes("股票") || type.includes("偏股")) {
+      type = "股票型";
+    } else if (type.includes("混合")) {
+      type = "混合型";
+    } else if (type.includes("债")) {
+      type = "债券型";
+    } else if (type.includes("指数")) {
+      type = "指数型";
+    } else if (type.includes("QDII")) {
+      type = "QDII";
+    } else if (type.includes("货币")) {
+      type = "货币型";
+    } else if (type.includes("FOF")) {
+      type = "FOF";
+    } else if (type.includes("REITs") || type.includes("Reits")) {
+      type = "REITs";
+    } else if (!type || type === "未知") {
+      type = "其他";
     }
 
     if (!dataMap[type]) dataMap[type] = 0;

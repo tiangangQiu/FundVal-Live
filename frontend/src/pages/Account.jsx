@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, X, Edit2, Trash2, RefreshCw, ArrowUpDown, ChevronDown, TrendingUp, TrendingDown, History } from 'lucide-react';
-import { getAccountPositions, updatePosition, deletePosition, addPositionTrade, reducePositionTrade, getTransactions } from '../services/api';
+import { Plus, X, Edit2, Trash2, RefreshCw, ArrowUpDown, ChevronDown, TrendingUp, TrendingDown, History, Download, CheckCircle, Clock } from 'lucide-react';
+import { getAccountPositions, updatePosition, deletePosition, addPositionTrade, reducePositionTrade, getTransactions, updatePositionsNav } from '../services/api';
 import { getRateColor } from '../components/StatCard';
 import { PortfolioChart } from '../components/PortfolioChart';
 
@@ -62,6 +62,9 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
   const [reduceTradeDate, setReduceTradeDate] = useState(() => getDefaultTradeDate());
   const [reduceTradeCutoff, setReduceTradeCutoff] = useState('before');
   const [reduceSubmitting, setReduceSubmitting] = useState(false);
+
+  // 手动更新净值
+  const [navUpdating, setNavUpdating] = useState(false);
 
   // 修改弹窗内该基金的操作记录
   const [modalTransactions, setModalTransactions] = useState([]);
@@ -138,6 +141,30 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
     if (!positions || positions.length === 0) return;
     if (confirm(`确定将 ${positions.length} 个持仓基金同步到关注列表吗？`)) {
         onSyncWatchlist && onSyncWatchlist(positions);
+    }
+  };
+
+  const handleUpdateNav = async () => {
+    if (navUpdating) return;
+    if (!confirm('确定手动更新所有持仓基金的净值吗？\n这可能需要几秒钟时间。')) return;
+
+    setNavUpdating(true);
+    try {
+      const result = await updatePositionsNav(currentAccount);
+      const data = result.data;
+
+      // Build detailed message
+      let msg = data.message || '净值更新完成';
+      if (data.failed && data.failed.length > 0) {
+        msg += `\n\n失败的基金：\n${data.failed.map(f => `${f.code}: ${f.error}`).join('\n')}`;
+      }
+
+      alert(msg);
+      fetchData(); // 刷新持仓数据
+    } catch (err) {
+      alert(err.response?.data?.detail || '净值更新失败');
+    } finally {
+      setNavUpdating(false);
     }
   };
 
@@ -343,6 +370,15 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
               {syncLoading ? '同步中...' : '同步关注'}
             </button>
             <button
+              onClick={handleUpdateNav}
+              disabled={navUpdating}
+              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-green-600 hover:border-green-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title="手动更新所有持仓基金的净值"
+            >
+              <Download className={`w-4 h-4 ${navUpdating ? 'animate-spin' : ''}`} />
+              {navUpdating ? '更新中...' : '更新净值'}
+            </button>
+            <button
               onClick={() => handleOpenModal()}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
             >
@@ -386,7 +422,14 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
                   
                   {/* Price Column */}
                   <td className="px-4 py-3 text-right font-mono">
-                    <div className="text-slate-500 text-xs" title="昨日净值">{pos.nav.toFixed(4)}</div>
+                    <div className="flex items-center justify-end gap-1">
+                      <div className="text-slate-500 text-xs" title="昨日净值">{pos.nav.toFixed(4)}</div>
+                      {pos.nav_updated_today ? (
+                        <CheckCircle className="w-3 h-3 text-green-500" title="当日净值已更新" />
+                      ) : (
+                        <Clock className="w-3 h-3 text-slate-300" title="当日净值未更新" />
+                      )}
+                    </div>
                     <div className={`font-medium ${getRateColor(pos.est_rate)}`} title="实时估值">
                         {pos.estimate > 0 ? pos.estimate.toFixed(4) : '--'}
                     </div>

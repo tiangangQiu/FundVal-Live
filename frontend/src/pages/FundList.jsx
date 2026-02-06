@@ -1,12 +1,21 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Activity, Filter, ArrowUpDown } from 'lucide-react';
 import { FundCard } from '../components/FundCard';
-
-const SECTORS = ["全部", "科技", "消费", "医药", "金融", "新能源", "材料", "QDII", "债券"];
+import { getFundCategories } from '../services/api';
 
 export const FundList = ({ watchlist, setWatchlist, onSelectFund, onSubscribe, onRemove }) => {
   const [filterSector, setFilterSector] = useState("全部");
   const [sortType, setSortType] = useState("default"); // default, rate_desc, rate_asc
+  const [categories, setCategories] = useState(["全部"]);
+
+  // Load categories from backend
+  useEffect(() => {
+    getFundCategories().then(cats => {
+      if (cats.length > 0) {
+        setCategories(["全部", ...cats]);
+      }
+    });
+  }, []);
 
   // Process list
   const processedList = useMemo(() => {
@@ -14,15 +23,10 @@ export const FundList = ({ watchlist, setWatchlist, onSelectFund, onSubscribe, o
 
     // 1. Filter
     if (filterSector !== "全部") {
-        // Simple heuristic: check if fund type or name contains sector keyword
-        // Since backend already provides 'type', we can use it.
         result = result.filter(f => {
-            const typeMatch = f.type && f.type.includes(filterSector);
-            // Fallback to name match if type is generic like '混合型'
-            const nameMatch = f.name && f.name.includes(filterSector); 
-            // Better: backend maps sector to specific keys.
-            // For now, simple includes is enough for MVP.
-            return typeMatch || nameMatch;
+            // Use fuzzy matching for major categories
+            // e.g. "股票型" matches "股票型", "混合型-偏股"
+            return f.type && f.type.includes(filterSector.replace("型", ""));
         });
     }
 
@@ -52,13 +56,13 @@ export const FundList = ({ watchlist, setWatchlist, onSelectFund, onSubscribe, o
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
             {/* Sector Filter */}
             <div className="flex bg-white border border-slate-200 rounded-lg p-1">
-                {SECTORS.map(s => (
+                {categories.map(s => (
                     <button
                         key={s}
                         onClick={() => setFilterSector(s)}
                         className={`px-3 py-1 text-xs rounded-md transition-colors whitespace-nowrap ${
-                            filterSector === s 
-                            ? 'bg-blue-100 text-blue-700 font-medium' 
+                            filterSector === s
+                            ? 'bg-blue-100 text-blue-700 font-medium'
                             : 'text-slate-500 hover:bg-slate-50'
                         }`}
                     >

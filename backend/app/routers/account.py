@@ -115,6 +115,75 @@ def get_positions(account_id: int = Query(1)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/account/positions/update-nav")
+def update_positions_nav(account_id: int = Query(1)):
+    """
+    手动更新持仓基金的净值。
+    拉取所有持仓基金的最新净值并更新 fund_history 表。
+    只有当日净值已公布才算更新成功。
+    """
+    import time
+    from datetime import datetime
+    from ..services.fund import get_fund_history
+
+    try:
+        # Get all holdings for this account
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT code FROM positions WHERE account_id = ? AND shares > 0", (account_id,))
+        codes = [row["code"] for row in cursor.fetchall()]
+        conn.close()
+
+        if not codes:
+            return {"ok": True, "message": "无持仓基金", "updated": 0, "pending": 0, "failed": 0}
+
+        # Get today's date
+        today = datetime.now().strftime("%Y-%m-%d")
+
+        # Update NAV for each fund
+        updated = 0  # 当日净值已更新
+        pending = 0  # 当日净值未公布
+        failed = []  # 拉取失败
+
+        for code in codes:
+            try:
+                history = get_fund_history(code, limit=5)
+                if history:
+                    # Check if latest NAV is today's
+                    latest_date = history[-1]["date"]
+                    if latest_date == today:
+                        updated += 1
+                    else:
+                        pending += 1
+                else:
+                    failed.append({"code": code, "error": "无历史数据"})
+                time.sleep(0.3)  # Avoid API rate limiting
+            except Exception as e:
+                failed.append({"code": code, "error": str(e)})
+
+        # Build message
+        msg_parts = []
+        if updated > 0:
+            msg_parts.append(f"{updated} 个已更新当日净值")
+        if pending > 0:
+            msg_parts.append(f"{pending} 个净值未公布")
+        if failed:
+            msg_parts.append(f"{len(failed)} 个拉取失败")
+
+        message = "、".join(msg_parts) if msg_parts else "无数据"
+
+        return {
+            "ok": True,
+            "message": message,
+            "updated": updated,
+            "pending": pending,
+            "failed_count": len(failed),
+            "total": len(codes),
+            "failed": failed if failed else None
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/account/positions")
 def update_position(data: PositionModel, account_id: int = Query(1)):
     """更新持仓（指定账户）"""

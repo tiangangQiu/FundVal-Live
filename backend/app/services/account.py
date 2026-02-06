@@ -3,19 +3,9 @@ import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..db import get_db_connection
-from .fund import get_combined_valuation, MAJOR_CATEGORIES
+from .fund import get_combined_valuation, get_fund_type
 
 logger = logging.getLogger(__name__)
-
-def classify_fund_simple(name: str) -> str:
-    """
-    Fast classification based on name keywords.
-    """
-    for cat, keywords in MAJOR_CATEGORIES.items():
-        if any(kw in name for kw in keywords):
-            return cat
-    if "债" in name: return "债券"
-    return "混合/其他"
 
 def get_all_positions(account_id: int = 1) -> Dict[str, Any]:
     """
@@ -53,15 +43,37 @@ def get_all_positions(account_id: int = 1) -> Dict[str, Any]:
                 # Default safe values
                 data = future.result() or {}
                 name = data.get("name")
+                fund_type = None
 
                 # If name is missing, fetch from database
                 if not name:
                     conn_temp = get_db_connection()
                     cursor_temp = conn_temp.cursor()
-                    cursor_temp.execute("SELECT name FROM funds WHERE code = ?", (code,))
+                    cursor_temp.execute("SELECT name, type FROM funds WHERE code = ?", (code,))
                     db_row = cursor_temp.fetchone()
                     conn_temp.close()
-                    name = db_row["name"] if db_row else code
+                    if db_row:
+                        name = db_row["name"]
+                        fund_type = db_row["type"]
+                    else:
+                        name = code
+
+                # Get fund type (use cached value or call get_fund_type)
+                if not fund_type:
+                    fund_type = get_fund_type(code, name)
+
+                # Check if today's NAV is available
+                from datetime import datetime
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                conn_temp = get_db_connection()
+                cursor_temp = conn_temp.cursor()
+                cursor_temp.execute(
+                    "SELECT date FROM fund_history WHERE code = ? ORDER BY date DESC LIMIT 1",
+                    (code,)
+                )
+                latest_nav_row = cursor_temp.fetchone()
+                conn_temp.close()
+                nav_updated_today = latest_nav_row and latest_nav_row["date"] == today_str
 
                 nav = float(data.get("nav", 0.0))
                 estimate = float(data.get("estimate", 0.0))
@@ -112,11 +124,12 @@ def get_all_positions(account_id: int = 1) -> Dict[str, Any]:
                 positions.append({
                     "code": code,
                     "name": name,
-                    "type": classify_fund_simple(name), # Add type here
+                    "type": fund_type,
                     "cost": cost,
                     "shares": shares,
                     "nav": nav,
                     "nav_date": data.get("navDate", "--"), # If available, else implicit
+                    "nav_updated_today": nav_updated_today,
                     "estimate": estimate,
                     "est_rate": est_rate,
                     "is_est_valid": is_est_valid,

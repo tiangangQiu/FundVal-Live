@@ -135,6 +135,61 @@ def cleanup_old_intraday_data():
     if deleted > 0:
         logger.info(f"Cleaned up {deleted} old intraday records (before {cutoff})")
 
+def update_holdings_nav():
+    """
+    Update NAV (net asset value) for all holdings.
+    Fetches latest NAV from AkShare and updates fund_history table.
+    Runs between 16:00-24:00 on trading days.
+    Only counts as success if today's NAV is available.
+    """
+    from .fund import get_fund_history
+    from .trading_calendar import is_trading_day
+
+    now_cst = datetime.now(CST)
+    today = now_cst.date()
+    today_str = today.strftime("%Y-%m-%d")
+
+    # Only run on trading days
+    if not is_trading_day(today):
+        return
+
+    # Only run between 16:00-24:00
+    current_hour = now_cst.hour
+    if current_hour < 16:
+        return
+
+    # Get all holdings
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT code FROM positions WHERE shares > 0")
+    codes = [row["code"] for row in cursor.fetchall()]
+    conn.close()
+
+    if not codes:
+        return
+
+    # Update NAV for each fund
+    updated = 0  # Today's NAV available
+    pending = 0  # Today's NAV not yet published
+
+    for code in codes:
+        try:
+            # Fetch latest 5 days history
+            history = get_fund_history(code, limit=5)
+            if history:
+                # Check if latest NAV is today's
+                latest_date = history[-1]["date"]
+                if latest_date == today_str:
+                    updated += 1
+                else:
+                    pending += 1
+            time.sleep(0.3)  # Avoid API rate limiting
+        except Exception as e:
+            logger.error(f"Failed to update NAV for {code}: {e}")
+
+    if updated > 0 or pending > 0:
+        logger.info(f"NAV update: {updated} updated, {pending} pending (total {len(codes)})")
+
 def check_subscriptions():
     """
     Check all subscriptions and send alerts (Volatility & Digest).
@@ -233,6 +288,7 @@ def start_scheduler():
 
         # 2. Main loop
         last_cleanup_date = None
+        last_nav_update_hour = None
 
         while True:
             try:
@@ -262,6 +318,11 @@ def start_scheduler():
                 if last_cleanup_date != today_str and now_cst.hour == 0:
                     cleanup_old_intraday_data()
                     last_cleanup_date = today_str
+
+                # NAV update (once per hour between 16:00-24:00)
+                if 16 <= now_cst.hour <= 23 and last_nav_update_hour != now_cst.hour:
+                    update_holdings_nav()
+                    last_nav_update_hour = now_cst.hour
 
             except Exception as e:
                 logger.error(f"Scheduler loop error: {e}")

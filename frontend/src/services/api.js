@@ -40,6 +40,16 @@ export const subscribeFund = async (fundId, data) => {
     return api.post(`/fund/${fundId}/subscribe`, data);
 };
 
+export const getFundCategories = async () => {
+    try {
+        const response = await api.get('/categories');
+        return response.data.categories || [];
+    } catch (error) {
+        console.error("Get categories failed", error);
+        return [];
+    }
+};
+
 // Account management
 export const getAccounts = async () => {
     try {
@@ -97,4 +107,8 @@ export const getTransactions = async (accountId = 1, code = null, limit = 100) =
     if (code) params.code = code;
     const response = await api.get('/account/transactions', { params });
     return response.data.transactions || [];
+};
+
+export const updatePositionsNav = async (accountId = 1) => {
+    return api.post('/account/positions/update-nav', null, { params: { account_id: accountId } });
 };

@@ -8,6 +8,62 @@ from ..services.subscription import add_subscription
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+@router.get("/categories")
+def get_fund_categories():
+    """
+    Get all unique fund categories from database.
+    Returns major categories (simplified) sorted by frequency.
+    """
+    from ..db import get_db_connection
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Get all unique types with their counts
+    cursor.execute("""
+        SELECT type, COUNT(*) as count
+        FROM funds
+        WHERE type IS NOT NULL AND type != ''
+        GROUP BY type
+        ORDER BY count DESC
+    """)
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    # Map to major categories
+    major_categories = {}
+    for row in rows:
+        fund_type = row["type"]
+        count = row["count"]
+
+        # Simplify to major categories
+        if "股票" in fund_type or "偏股" in fund_type:
+            major = "股票型"
+        elif "混合" in fund_type:
+            major = "混合型"
+        elif "债" in fund_type:
+            major = "债券型"
+        elif "指数" in fund_type:
+            major = "指数型"
+        elif "QDII" in fund_type:
+            major = "QDII"
+        elif "货币" in fund_type:
+            major = "货币型"
+        elif "FOF" in fund_type:
+            major = "FOF"
+        elif "REITs" in fund_type or "Reits" in fund_type:
+            major = "REITs"
+        else:
+            major = "其他"
+
+        major_categories[major] = major_categories.get(major, 0) + count
+
+    # Sort by count
+    categories = sorted(major_categories.keys(), key=lambda x: major_categories[x], reverse=True)
+
+    return {"categories": categories}
+
 @router.get("/search")
 def search(q: str = Query(..., min_length=1)):
     try:
