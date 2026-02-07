@@ -112,3 +112,26 @@ export const getTransactions = async (accountId = 1, code = null, limit = 100) =
 export const updatePositionsNav = async (accountId = 1) => {
     return api.post('/account/positions/update-nav', null, { params: { account_id: accountId } });
 };
+
+// AI Prompts management
+export const getPrompts = async () => {
+    try {
+        const response = await api.get('/ai/prompts');
+        return response.data.prompts || [];
+    } catch (error) {
+        console.error("Get prompts failed", error);
+        return [];
+    }
+};
+
+export const createPrompt = async (data) => {
+    return api.post('/ai/prompts', data);
+};
+
+export const updatePrompt = async (id, data) => {
+    return api.put(`/ai/prompts/${id}`, data);
+};
+
+export const deletePrompt = async (id) => {
+    return api.delete(`/ai/prompts/${id}`);
+};
