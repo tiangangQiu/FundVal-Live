@@ -10,6 +10,9 @@ from ..services.data_io import export_data, import_data
 
 router = APIRouter()
 
+# Valid module names
+VALID_MODULES = ["accounts", "positions", "transactions", "ai_prompts", "subscriptions", "settings"]
+
 
 class ImportRequest(BaseModel):
     data: dict
@@ -28,9 +31,14 @@ def export_data_endpoint(modules: Optional[str] = None):
     """
     try:
         # 解析模块列表
-        module_list = None
         if modules:
             module_list = [m.strip() for m in modules.split(",")]
+            # 验证模块名
+            invalid = [m for m in module_list if m not in VALID_MODULES]
+            if invalid:
+                raise HTTPException(status_code=400, detail=f"Invalid modules: {', '.join(invalid)}")
+        else:
+            module_list = VALID_MODULES
 
         # 导出数据
         data = export_data(module_list)
@@ -72,10 +80,9 @@ def import_data_endpoint(request: ImportRequest = Body(...)):
             raise HTTPException(status_code=400, detail="Invalid mode. Must be 'merge' or 'replace'")
 
         # 验证模块列表
-        valid_modules = ["accounts", "positions", "transactions", "ai_prompts", "subscriptions", "settings"]
-        for module in request.modules:
-            if module not in valid_modules:
-                raise HTTPException(status_code=400, detail=f"Invalid module: {module}")
+        invalid = [m for m in request.modules if m not in VALID_MODULES]
+        if invalid:
+            raise HTTPException(status_code=400, detail=f"Invalid modules: {', '.join(invalid)}")
 
         # 导入数据
         result = import_data(request.data, request.modules, request.mode)

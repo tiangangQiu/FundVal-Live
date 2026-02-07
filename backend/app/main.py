@@ -2,6 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from contextlib import asynccontextmanager
 import os
 import sys
@@ -10,6 +12,21 @@ import json
 from .routers import funds, ai, account, settings, data
 from .db import init_db
 from .services.scheduler import start_scheduler
+
+# Request size limit (10MB)
+MAX_REQUEST_SIZE = 10 * 1024 * 1024
+
+
+class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
+    """Middleware to limit request body size"""
+    async def dispatch(self, request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > MAX_REQUEST_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"Request body too large. Maximum size is {MAX_REQUEST_SIZE / 1024 / 1024}MB"}
+            )
+        return await call_next(request)
 
 # 读取版本号
 def get_version():
@@ -43,6 +60,9 @@ async def lifespan(app: FastAPI):
     pass
 
 app = FastAPI(title="Fund Intraday Valuation API", lifespan=lifespan)
+
+# Request size limit middleware
+app.add_middleware(RequestSizeLimitMiddleware)
 
 # CORS: allow all for MVP
 app.add_middleware(
