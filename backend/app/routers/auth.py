@@ -596,7 +596,10 @@ def delete_user(user_id: int, admin: User = Depends(require_admin)):
         # 5. 删除用户的订阅
         cursor.execute("DELETE FROM subscriptions WHERE user_id = ?", (user_id,))
 
-        # 6. 删除用户
+        # 6. 删除用户的 AI prompts
+        cursor.execute("DELETE FROM ai_prompts WHERE user_id = ?", (user_id,))
+
+        # 7. 删除用户
         cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
 
         conn.commit()

@@ -4,19 +4,9 @@ from pydantic import BaseModel, Field
 from ..services.ai import ai_service
 from ..db import get_db_connection
 from ..auth import get_current_user, User
+from ..utils import get_user_id_for_query
 
 router = APIRouter()
-
-def get_user_id_for_query(user: Optional[User]) -> Optional[int]:
-    """
-    获取用于查询的 user_id
-    单用户模式：返回 None
-    多用户模式：返回 user.id
-    """
-    from ..auth import is_multi_user_mode
-    if not is_multi_user_mode():
-        return None
-    return user.id if user else None
 
 class PromptModel(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)

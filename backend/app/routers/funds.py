@@ -84,10 +84,15 @@ def fund_detail(fund_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/fund/{fund_id}/history")
-def fund_history(fund_id: str, limit: int = 30, account_id: int = Query(None)):
+def fund_history(
+    fund_id: str,
+    limit: int = 30,
+    account_id: int = Query(None),
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """
     Get historical NAV data for charts.
-    Optionally include transaction markers if account_id is provided.
+    Optionally include transaction markers if account_id is provided (需要认证并验证所有权).
     """
     try:
         history = get_fund_history(fund_id, limit=limit)
@@ -95,6 +100,9 @@ def fund_history(fund_id: str, limit: int = 30, account_id: int = Query(None)):
         # If account_id is provided, fetch transactions for this fund
         transactions = []
         if account_id:
+            # 验证账户所有权
+            verify_account_ownership(account_id, current_user)
+
             from ..db import get_db_connection
             conn = get_db_connection()
             cursor = conn.cursor()
