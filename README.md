@@ -64,7 +64,8 @@
 
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| **macOS (通用版本)** | `FundVal-Live-*.dmg` | 同时支持 Apple Silicon 和 Intel 芯片 |
+| **macOS (Apple Silicon)** | `FundVal-Live-*-arm64.dmg` | M1/M2/M3 芯片 |
+| **macOS (Intel)** | `FundVal-Live-*-x64.dmg` | Intel 芯片 |
 | **Windows** | `FundVal-Live-Setup-*.exe` | 64位系统 |
 | **Linux (AppImage)** | `FundVal-Live-*.AppImage` | 通用格式 |
 | **Linux (Debian/Ubuntu)** | `fundval-live_*_amd64.deb` | deb 包 |
@@ -72,7 +73,9 @@
 #### 安装
 
 **macOS:**
-1. 下载 `.dmg` 文件（Universal Binary，同时支持 Intel 和 Apple Silicon）
+1. 下载对应架构的 `.dmg` 文件
+   - Apple Silicon (M1/M2/M3)：下载 `arm64` 版本
+   - Intel 芯片：下载 `x64` 版本
 2. 双击打开，拖动到 Applications
 3. 首次打开如提示"无法验证开发者"：
    - 打开"系统偏好设置" → "安全性与隐私"
