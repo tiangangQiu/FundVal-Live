@@ -1,7 +1,10 @@
 import logging
-from fastapi import APIRouter, HTTPException, Query, Body
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Query, Body, Depends
 from ..services.fund import search_funds, get_fund_intraday, get_fund_history
 from ..config import Config
+from ..auth import User, get_current_user
+from ..utils import get_user_id_for_query
 
 from ..services.subscription import add_subscription
 
@@ -174,31 +177,47 @@ def fund_intraday(fund_id: str, date: str = None):
     }
 
 @router.post("/fund/{fund_id}/subscribe")
-def subscribe_fund(fund_id: str, data: dict = Body(...)):
+def subscribe_fund(
+    fund_id: str,
+    data: dict = Body(...),
+    current_user: Optional[User] = Depends(get_current_user)
+):
     """
-    Subscribe to fund alerts.
+    订阅基金提醒
+
+    Args:
+        fund_id: 基金代码
+        data: 订阅配置（email, thresholdUp, thresholdDown, enableDailyDigest, digestTime, enableVolatility）
+        current_user: 当前用户（单用户模式为 None）
+
+    Returns:
+        dict: 成功消息
     """
+    user_id = get_user_id_for_query(current_user)
     email = data.get("email")
     up = data.get("thresholdUp")
     down = data.get("thresholdDown")
     enable_digest = data.get("enableDailyDigest", False)
     digest_time = data.get("digestTime", "14:45")
     enable_volatility = data.get("enableVolatility", True)
-    
+
     if not email:
         raise HTTPException(status_code=400, detail="Email required")
-    
+
     try:
         add_subscription(
-            fund_id, 
-            email, 
-            float(up or 0), 
+            fund_id,
+            email,
+            user_id,  # 添加 user_id 参数
+            float(up or 0),
             float(down or 0),
             enable_digest=enable_digest,
             digest_time=digest_time,
             enable_volatility=enable_volatility
         )
         return {"status": "ok", "message": "Subscription active"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Subscription failed: {e}")
         raise HTTPException(status_code=500, detail="Failed to save subscription")

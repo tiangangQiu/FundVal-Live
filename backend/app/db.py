@@ -478,6 +478,58 @@ def init_db():
 
         cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (5)")
 
+    # Migration: Fix subscriptions UNIQUE constraint for multi-user mode
+    if current_version < 6:
+        logger.info("Running migration: fixing subscriptions UNIQUE constraint")
+
+        # Backup old data
+        cursor.execute("""
+            SELECT id, code, email, threshold_up, threshold_down, enable_digest,
+                   digest_time, enable_volatility, last_notified_at, last_digest_at,
+                   created_at, user_id
+            FROM subscriptions
+        """)
+        old_subscriptions = cursor.fetchall()
+
+        # Drop old table
+        cursor.execute("DROP TABLE subscriptions")
+
+        # Create new table with updated UNIQUE constraint
+        # UNIQUE(code, email, user_id) allows different users to use same email
+        cursor.execute("""
+            CREATE TABLE subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                code TEXT NOT NULL,
+                email TEXT NOT NULL,
+                user_id INTEGER,
+                threshold_up REAL,
+                threshold_down REAL,
+                enable_digest INTEGER DEFAULT 0,
+                digest_time TEXT DEFAULT '14:45',
+                enable_volatility INTEGER DEFAULT 1,
+                last_notified_at TIMESTAMP,
+                last_digest_at TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(code, email, user_id)
+            )
+        """)
+
+        # Restore data
+        for row in old_subscriptions:
+            cursor.execute("""
+                INSERT INTO subscriptions
+                (id, code, email, user_id, threshold_up, threshold_down, enable_digest,
+                 digest_time, enable_volatility, last_notified_at, last_digest_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, row)
+
+        # Recreate index
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)
+        """)
+
+        cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (6)")
+
     conn.commit()
     conn.close()
     logger.info("Database initialized.")

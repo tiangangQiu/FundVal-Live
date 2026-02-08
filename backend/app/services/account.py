@@ -1,4 +1,4 @@
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -7,21 +7,22 @@ from .fund import get_combined_valuation, get_fund_type
 
 logger = logging.getLogger(__name__)
 
-def get_all_positions(account_id: int = 1) -> Dict[str, Any]:
+def get_all_positions(account_id: int, user_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Fetch all positions for a specific account, get real-time valuations in parallel,
     and compute portfolio statistics.
 
-    Special case: account_id = 0 returns aggregated data from all accounts.
+    Args:
+        account_id: 账户 ID
+        user_id: 用户 ID（单用户模式为 None，多用户模式为 current_user.id）
+
+    Returns:
+        Dict containing summary and positions
     """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Special case: account_id = 0 means "all accounts"
-    if account_id == 0:
-        cursor.execute("SELECT * FROM positions WHERE shares > 0")
-    else:
-        cursor.execute("SELECT * FROM positions WHERE account_id = ? AND shares > 0", (account_id,))
+    cursor.execute("SELECT * FROM positions WHERE account_id = ? AND shares > 0", (account_id,))
 
     rows = cursor.fetchall()
     conn.close()
@@ -32,37 +33,7 @@ def get_all_positions(account_id: int = 1) -> Dict[str, Any]:
     total_day_income = 0.0
 
     # 1. Fetch real-time data in parallel
-    # For account_id = 0, we need to merge positions with same code
-    if account_id == 0:
-        # Group by code and merge
-        code_positions = {}
-        for row in rows:
-            code = row["code"]
-            if code not in code_positions:
-                code_positions[code] = {
-                    "cost": 0.0,
-                    "shares": 0.0,
-                    "total_cost_basis": 0.0
-                }
-            # Accumulate shares and cost basis
-            shares = float(row["shares"])
-            cost = float(row["cost"])
-            code_positions[code]["shares"] += shares
-            code_positions[code]["total_cost_basis"] += shares * cost
-
-        # Calculate weighted average cost
-        position_map = {}
-        for code, data in code_positions.items():
-            if data["shares"] > 0:
-                weighted_avg_cost = data["total_cost_basis"] / data["shares"]
-                position_map[code] = {
-                    "code": code,
-                    "cost": weighted_avg_cost,
-                    "shares": data["shares"]
-                }
-    else:
-        # Single account: use as-is
-        position_map = {row["code"]: row for row in rows}
+    position_map = {row["code"]: row for row in rows}
     
     with ThreadPoolExecutor(max_workers=10) as executor:
         # Submit tasks
@@ -227,7 +198,17 @@ def get_all_positions(account_id: int = 1) -> Dict[str, Any]:
         "positions": sorted(positions, key=lambda x: x["est_market_value"], reverse=True)
     }
 
-def upsert_position(account_id: int, code: str, cost: float, shares: float):
+def upsert_position(account_id: int, code: str, cost: float, shares: float, user_id: Optional[int] = None):
+    """
+    更新或插入持仓
+
+    Args:
+        account_id: 账户 ID
+        code: 基金代码
+        cost: 成本
+        shares: 份额
+        user_id: 用户 ID（用于验证，但实际不需要，因为 account_id 已经验证过所有权）
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -241,7 +222,15 @@ def upsert_position(account_id: int, code: str, cost: float, shares: float):
     conn.commit()
     conn.close()
 
-def remove_position(account_id: int, code: str):
+def remove_position(account_id: int, code: str, user_id: Optional[int] = None):
+    """
+    删除持仓
+
+    Args:
+        account_id: 账户 ID
+        code: 基金代码
+        user_id: 用户 ID（用于验证，但实际不需要，因为 account_id 已经验证过所有权）
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM positions WHERE account_id = ? AND code = ?", (account_id, code))

@@ -25,10 +25,17 @@ def _get_position(account_id: int, code: str) -> Optional[Dict[str, Any]]:
     return {"code": row["code"], "cost": float(row["cost"]), "shares": float(row["shares"])}
 
 
-def add_position_trade(account_id: int, code: str, amount_cny: float, trade_ts: Optional[datetime] = None) -> Dict[str, Any]:
+def add_position_trade(account_id: int, code: str, amount_cny: float, trade_ts: Optional[datetime] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
     """
     加仓：按交易时间确定确认日，若该日净值已公布则立即更新持仓并记流水；
     否则写入待确认流水，等定时任务用真实净值补算。
+
+    Args:
+        account_id: 账户 ID
+        code: 基金代码
+        amount_cny: 加仓金额
+        trade_ts: 交易时间
+        user_id: 用户 ID（用于验证，但实际不需要，因为 account_id 已经验证过所有权）
     """
     if amount_cny <= 0:
         return {"ok": False, "message": "加仓金额必须大于 0"}
@@ -85,9 +92,16 @@ def add_position_trade(account_id: int, code: str, amount_cny: float, trade_ts: 
         }
 
 
-def reduce_position_trade(account_id: int, code: str, shares_redeemed: float, trade_ts: Optional[datetime] = None) -> Dict[str, Any]:
+def reduce_position_trade(account_id: int, code: str, shares_redeemed: float, trade_ts: Optional[datetime] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
     """
     减仓：按交易时间确定确认日，若该日净值已公布则立即扣减份额并记流水；否则待确认。
+
+    Args:
+        account_id: 账户 ID
+        code: 基金代码
+        shares_redeemed: 减仓份额
+        trade_ts: 交易时间
+        user_id: 用户 ID（用于验证，但实际不需要，因为 account_id 已经验证过所有权）
     """
     if shares_redeemed <= 0:
         return {"ok": False, "message": "减仓份额必须大于 0"}
@@ -148,12 +162,20 @@ def reduce_position_trade(account_id: int, code: str, shares_redeemed: float, tr
         }
 
 
-def list_transactions(account_id: int = None, code: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-    """操作记录列表，可选按账户和基金筛选。"""
+def list_transactions(account_id: int, code: Optional[str] = None, limit: int = 100, user_id: Optional[int] = None) -> List[Dict[str, Any]]:
+    """
+    操作记录列表，按账户和基金筛选。
+
+    Args:
+        account_id: 账户 ID（必填）
+        code: 基金代码（可选）
+        limit: 返回数量限制
+        user_id: 用户 ID（用于验证，但实际不需要，因为 account_id 已经验证过所有权）
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    if account_id and code:
+    if code:
         cursor.execute(
             """
             SELECT id, code, op_type, amount_cny, shares_redeemed, confirm_date, confirm_nav,
@@ -162,7 +184,7 @@ def list_transactions(account_id: int = None, code: Optional[str] = None, limit:
             """,
             (account_id, code, limit),
         )
-    elif account_id:
+    else:
         cursor.execute(
             """
             SELECT id, code, op_type, amount_cny, shares_redeemed, confirm_date, confirm_nav,
@@ -170,24 +192,6 @@ def list_transactions(account_id: int = None, code: Optional[str] = None, limit:
             FROM transactions WHERE account_id = ? ORDER BY id DESC LIMIT ?
             """,
             (account_id, limit),
-        )
-    elif code:
-        cursor.execute(
-            """
-            SELECT id, code, op_type, amount_cny, shares_redeemed, confirm_date, confirm_nav,
-                   shares_added, cost_after, created_at, applied_at
-            FROM transactions WHERE code = ? ORDER BY id DESC LIMIT ?
-            """,
-            (code, limit),
-        )
-    else:
-        cursor.execute(
-            """
-            SELECT id, code, op_type, amount_cny, shares_redeemed, confirm_date, confirm_nav,
-                   shares_added, cost_after, created_at, applied_at
-            FROM transactions ORDER BY id DESC LIMIT ?
-            """,
-            (limit,),
         )
     rows = cursor.fetchall()
     conn.close()
