@@ -2,6 +2,7 @@ import datetime
 import logging
 from typing import List, Dict, Any, Optional
 from ..db import get_db_connection
+from ..auth import User, is_multi_user_mode
 
 logger = logging.getLogger(__name__)
 
@@ -12,18 +13,33 @@ IMPORT_ORDER = ["settings", "ai_prompts", "accounts", "positions", "transactions
 SENSITIVE_MASK = "***"
 
 
-def export_data(modules: List[str]) -> Dict[str, Any]:
+def get_user_id_for_query(user: Optional[User]) -> Optional[int]:
+    """
+    获取用于查询的 user_id
+
+    单用户模式：返回 None
+    多用户模式：返回 user.id
+    """
+    if not is_multi_user_mode():
+        return None
+    return user.id if user else None
+
+
+def export_data(modules: List[str], current_user: Optional[User] = None) -> Dict[str, Any]:
     """
     Export selected modules to JSON format.
 
     Args:
         modules: List of module names to export
+        current_user: Current user (for filtering data by user_id)
 
     Returns:
         Dict containing version, exported_at, metadata, and module data
     """
     if not modules:
         raise ValueError("No modules selected for export")
+
+    user_id = get_user_id_for_query(current_user)
 
     result = {
         "version": "1.0",
@@ -35,28 +51,28 @@ def export_data(modules: List[str]) -> Dict[str, Any]:
     # Export each module
     for module in modules:
         if module == "settings":
-            result["modules"]["settings"] = _export_settings()
+            result["modules"]["settings"] = _export_settings(user_id)
             result["metadata"]["total_settings"] = len(result["modules"]["settings"])
         elif module == "ai_prompts":
-            result["modules"]["ai_prompts"] = _export_ai_prompts()
+            result["modules"]["ai_prompts"] = _export_ai_prompts(user_id)
             result["metadata"]["total_ai_prompts"] = len(result["modules"]["ai_prompts"])
         elif module == "accounts":
-            result["modules"]["accounts"] = _export_accounts()
+            result["modules"]["accounts"] = _export_accounts(user_id)
             result["metadata"]["total_accounts"] = len(result["modules"]["accounts"])
         elif module == "positions":
-            result["modules"]["positions"] = _export_positions()
+            result["modules"]["positions"] = _export_positions(user_id)
             result["metadata"]["total_positions"] = len(result["modules"]["positions"])
         elif module == "transactions":
-            result["modules"]["transactions"] = _export_transactions()
+            result["modules"]["transactions"] = _export_transactions(user_id)
             result["metadata"]["total_transactions"] = len(result["modules"]["transactions"])
         elif module == "subscriptions":
-            result["modules"]["subscriptions"] = _export_subscriptions()
+            result["modules"]["subscriptions"] = _export_subscriptions(user_id)
             result["metadata"]["total_subscriptions"] = len(result["modules"]["subscriptions"])
 
     return result
 
 
-def import_data(data: Dict[str, Any], modules: List[str], mode: str) -> Dict[str, Any]:
+def import_data(data: Dict[str, Any], modules: List[str], mode: str, current_user: Optional[User] = None) -> Dict[str, Any]:
     """
     Import selected modules from JSON data.
 
@@ -64,6 +80,7 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str) -> Dict[str
         data: JSON data containing modules
         modules: List of module names to import
         mode: "merge" or "replace"
+        current_user: Current user (for setting user_id on imported data)
 
     Returns:
         Dict containing import results
@@ -73,6 +90,8 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str) -> Dict[str
 
     if "version" not in data:
         raise ValueError("Missing version field in import data")
+
+    user_id = get_user_id_for_query(current_user)
 
     # Initialize result
     result = {
@@ -102,17 +121,17 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str) -> Dict[str
 
             # Import module
             if module == "settings":
-                module_result = _import_settings(conn, module_data, mode)
+                module_result = _import_settings(conn, module_data, mode, user_id)
             elif module == "ai_prompts":
-                module_result = _import_ai_prompts(conn, module_data, mode)
+                module_result = _import_ai_prompts(conn, module_data, mode, user_id)
             elif module == "accounts":
-                module_result = _import_accounts(conn, module_data, mode)
+                module_result = _import_accounts(conn, module_data, mode, user_id)
             elif module == "positions":
-                module_result = _import_positions(conn, module_data, mode)
+                module_result = _import_positions(conn, module_data, mode, user_id)
             elif module == "transactions":
-                module_result = _import_transactions(conn, module_data, mode)
+                module_result = _import_transactions(conn, module_data, mode, user_id)
             elif module == "subscriptions":
-                module_result = _import_subscriptions(conn, module_data, mode)
+                module_result = _import_subscriptions(conn, module_data, mode, user_id)
             else:
                 continue
 
@@ -140,12 +159,26 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str) -> Dict[str
 
 # Export functions
 
-def _export_settings() -> Dict[str, str]:
-    """Export settings (mask sensitive fields)"""
+def _export_settings(user_id: Optional[int]) -> Dict[str, str]:
+    """
+    Export settings (mask sensitive fields)
+
+    单用户模式：导出 settings 表
+    多用户模式：导出 user_settings 表
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT key, value, encrypted FROM settings")
+
+        if user_id is None:
+            # 单用户模式：从 settings 表读取
+            cursor.execute("SELECT key, value, encrypted FROM settings")
+        else:
+            # 多用户模式：从 user_settings 表读取
+            cursor.execute(
+                "SELECT key, value, encrypted FROM user_settings WHERE user_id = ?",
+                (user_id,)
+            )
 
         settings = {}
         for row in cursor.fetchall():
@@ -164,11 +197,17 @@ def _export_settings() -> Dict[str, str]:
         conn.close()
 
 
-def _export_ai_prompts() -> List[Dict[str, Any]]:
-    """Export AI prompts"""
+def _export_ai_prompts(user_id: Optional[int]) -> List[Dict[str, Any]]:
+    """
+    Export AI prompts
+
+    TODO: ai_prompts 表目前没有 user_id 字段，暂时导出所有 prompts
+    未来需要添加 user_id 字段后再按用户过滤
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
+        # TODO: 添加 WHERE user_id = ? 过滤
         cursor.execute("""
             SELECT name, system_prompt, user_prompt, is_default, created_at, updated_at
             FROM ai_prompts
@@ -191,16 +230,30 @@ def _export_ai_prompts() -> List[Dict[str, Any]]:
         conn.close()
 
 
-def _export_accounts() -> List[Dict[str, Any]]:
-    """Export accounts"""
+def _export_accounts(user_id: Optional[int]) -> List[Dict[str, Any]]:
+    """
+    Export accounts (filtered by user_id)
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, name, description, created_at, updated_at
-            FROM accounts
-            ORDER BY id
-        """)
+
+        if user_id is None:
+            # 单用户模式：导出所有账户
+            cursor.execute("""
+                SELECT id, name, description, created_at, updated_at
+                FROM accounts
+                WHERE user_id IS NULL
+                ORDER BY id
+            """)
+        else:
+            # 多用户模式：只导出当前用户的账户
+            cursor.execute("""
+                SELECT id, name, description, created_at, updated_at
+                FROM accounts
+                WHERE user_id = ?
+                ORDER BY id
+            """, (user_id,))
 
         accounts = []
         for row in cursor.fetchall():
@@ -217,16 +270,32 @@ def _export_accounts() -> List[Dict[str, Any]]:
         conn.close()
 
 
-def _export_positions() -> List[Dict[str, Any]]:
-    """Export positions"""
+def _export_positions(user_id: Optional[int]) -> List[Dict[str, Any]]:
+    """
+    Export positions (filtered by user's accounts)
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT account_id, code, cost, shares, updated_at
-            FROM positions
-            ORDER BY account_id, code
-        """)
+
+        if user_id is None:
+            # 单用户模式：导出所有持仓
+            cursor.execute("""
+                SELECT p.account_id, p.code, p.cost, p.shares, p.updated_at
+                FROM positions p
+                JOIN accounts a ON p.account_id = a.id
+                WHERE a.user_id IS NULL
+                ORDER BY p.account_id, p.code
+            """)
+        else:
+            # 多用户模式：只导出当前用户的持仓
+            cursor.execute("""
+                SELECT p.account_id, p.code, p.cost, p.shares, p.updated_at
+                FROM positions p
+                JOIN accounts a ON p.account_id = a.id
+                WHERE a.user_id = ?
+                ORDER BY p.account_id, p.code
+            """, (user_id,))
 
         positions = []
         for row in cursor.fetchall():
@@ -243,18 +312,36 @@ def _export_positions() -> List[Dict[str, Any]]:
         conn.close()
 
 
-def _export_transactions() -> List[Dict[str, Any]]:
-    """Export transactions"""
+def _export_transactions(user_id: Optional[int]) -> List[Dict[str, Any]]:
+    """
+    Export transactions (filtered by user's accounts)
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, account_id, code, op_type, amount_cny, shares_redeemed,
-                   confirm_date, confirm_nav, shares_added, cost_after,
-                   created_at, applied_at
-            FROM transactions
-            ORDER BY id
-        """)
+
+        if user_id is None:
+            # 单用户模式：导出所有交易记录
+            cursor.execute("""
+                SELECT t.id, t.account_id, t.code, t.op_type, t.amount_cny, t.shares_redeemed,
+                       t.confirm_date, t.confirm_nav, t.shares_added, t.cost_after,
+                       t.created_at, t.applied_at
+                FROM transactions t
+                JOIN accounts a ON t.account_id = a.id
+                WHERE a.user_id IS NULL
+                ORDER BY t.id
+            """)
+        else:
+            # 多用户模式：只导出当前用户的交易记录
+            cursor.execute("""
+                SELECT t.id, t.account_id, t.code, t.op_type, t.amount_cny, t.shares_redeemed,
+                       t.confirm_date, t.confirm_nav, t.shares_added, t.cost_after,
+                       t.created_at, t.applied_at
+                FROM transactions t
+                JOIN accounts a ON t.account_id = a.id
+                WHERE a.user_id = ?
+                ORDER BY t.id
+            """, (user_id,))
 
         transactions = []
         for row in cursor.fetchall():
@@ -278,18 +365,34 @@ def _export_transactions() -> List[Dict[str, Any]]:
         conn.close()
 
 
-def _export_subscriptions() -> List[Dict[str, Any]]:
-    """Export subscriptions"""
+def _export_subscriptions(user_id: Optional[int]) -> List[Dict[str, Any]]:
+    """
+    Export subscriptions (filtered by user_id)
+    """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, code, email, threshold_up, threshold_down,
-                   enable_digest, digest_time, enable_volatility,
-                   last_notified_at, last_digest_at, created_at
-            FROM subscriptions
-            ORDER BY id
-        """)
+
+        if user_id is None:
+            # 单用户模式：导出所有订阅
+            cursor.execute("""
+                SELECT id, code, email, threshold_up, threshold_down,
+                       enable_digest, digest_time, enable_volatility,
+                       last_notified_at, last_digest_at, created_at
+                FROM subscriptions
+                WHERE user_id IS NULL
+                ORDER BY id
+            """)
+        else:
+            # 多用户模式：只导出当前用户的订阅
+            cursor.execute("""
+                SELECT id, code, email, threshold_up, threshold_down,
+                       enable_digest, digest_time, enable_volatility,
+                       last_notified_at, last_digest_at, created_at
+                FROM subscriptions
+                WHERE user_id = ?
+                ORDER BY id
+            """, (user_id,))
 
         subscriptions = []
         for row in cursor.fetchall():
@@ -317,8 +420,13 @@ def _export_subscriptions() -> List[Dict[str, Any]]:
 
 # Import functions
 
-def _import_settings(conn, data: Dict[str, str], mode: str) -> Dict[str, Any]:
-    """Import settings (always merge mode, skip *** values)"""
+def _import_settings(conn, data: Dict[str, str], mode: str, user_id: Optional[int]) -> Dict[str, Any]:
+    """
+    Import settings
+
+    单用户模式：导入到 settings 表
+    多用户模式：导入到 user_settings 表
+    """
     cursor = conn.cursor()
     result = {"total": len(data), "imported": 0, "skipped": 0, "failed": 0, "deleted": 0, "errors": []}
 
@@ -330,10 +438,25 @@ def _import_settings(conn, data: Dict[str, str], mode: str) -> Dict[str, Any]:
             continue
 
         try:
-            cursor.execute("""
-                INSERT OR REPLACE INTO settings (key, value)
-                VALUES (?, ?)
-            """, (key, value))
+            if user_id is None:
+                # 单用户模式：导入到 settings 表
+                cursor.execute("""
+                    INSERT INTO settings (key, value, encrypted, updated_at)
+                    VALUES (?, ?, 0, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (key, value))
+            else:
+                # 多用户模式：导入到 user_settings 表
+                cursor.execute("""
+                    INSERT INTO user_settings (user_id, key, value, encrypted, updated_at)
+                    VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
+                    ON CONFLICT(user_id, key) DO UPDATE SET
+                        value = excluded.value,
+                        updated_at = CURRENT_TIMESTAMP
+                """, (user_id, key, value))
+
             result["imported"] += 1
         except Exception as e:
             result["failed"] += 1
@@ -343,13 +466,19 @@ def _import_settings(conn, data: Dict[str, str], mode: str) -> Dict[str, Any]:
     return result
 
 
-def _import_ai_prompts(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, Any]:
-    """Import AI prompts"""
+def _import_ai_prompts(conn, data: List[Dict[str, Any]], mode: str, user_id: Optional[int]) -> Dict[str, Any]:
+    """
+    Import AI prompts
+
+    TODO: ai_prompts 表目前没有 user_id 字段，暂时不设置 user_id
+    未来需要添加 user_id 字段后再设置
+    """
     cursor = conn.cursor()
     result = {"total": len(data), "imported": 0, "skipped": 0, "failed": 0, "deleted": 0, "errors": []}
 
     # Replace mode: delete all existing prompts
     if mode == "replace":
+        # TODO: 添加 WHERE user_id = ? 过滤
         cursor.execute("DELETE FROM ai_prompts")
         deleted_count = cursor.rowcount
         result["deleted"] = deleted_count
@@ -364,11 +493,13 @@ def _import_ai_prompts(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str,
 
             # Check if prompt with same name exists (merge mode)
             if mode == "merge":
+                # TODO: 添加 AND user_id = ? 过滤
                 cursor.execute("SELECT id FROM ai_prompts WHERE name = ?", (name,))
                 if cursor.fetchone():
                     result["skipped"] += 1
                     continue
 
+            # TODO: 添加 user_id 字段
             cursor.execute("""
                 INSERT INTO ai_prompts (name, system_prompt, user_prompt, is_default)
                 VALUES (?, ?, ?, ?)
@@ -388,14 +519,19 @@ def _import_ai_prompts(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str,
     return result
 
 
-def _import_accounts(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, Any]:
-    """Import accounts"""
+def _import_accounts(conn, data: List[Dict[str, Any]], mode: str, user_id: Optional[int]) -> Dict[str, Any]:
+    """
+    Import accounts (set user_id)
+    """
     cursor = conn.cursor()
     result = {"total": len(data), "imported": 0, "skipped": 0, "failed": 0, "deleted": 0, "errors": []}
 
-    # Replace mode: delete all existing accounts
+    # Replace mode: delete user's existing accounts
     if mode == "replace":
-        cursor.execute("DELETE FROM accounts")
+        if user_id is None:
+            cursor.execute("DELETE FROM accounts WHERE user_id IS NULL")
+        else:
+            cursor.execute("DELETE FROM accounts WHERE user_id = ?", (user_id,))
         deleted_count = cursor.rowcount
         result["deleted"] = deleted_count
 
@@ -409,15 +545,20 @@ def _import_accounts(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, A
 
             # Check if account with same name exists (merge mode)
             if mode == "merge":
-                cursor.execute("SELECT id FROM accounts WHERE name = ?", (name,))
+                if user_id is None:
+                    cursor.execute("SELECT id FROM accounts WHERE name = ? AND user_id IS NULL", (name,))
+                else:
+                    cursor.execute("SELECT id FROM accounts WHERE name = ? AND user_id = ?", (name, user_id))
+
                 if cursor.fetchone():
                     result["skipped"] += 1
                     continue
 
+            # Insert with user_id
             cursor.execute("""
-                INSERT INTO accounts (name, description)
-                VALUES (?, ?)
-            """, (name, account.get("description", "")))
+                INSERT INTO accounts (name, description, user_id)
+                VALUES (?, ?, ?)
+            """, (name, account.get("description", ""), user_id))
             result["imported"] += 1
 
         except Exception as e:
@@ -428,14 +569,25 @@ def _import_accounts(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, A
     return result
 
 
-def _import_positions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, Any]:
-    """Import positions"""
+def _import_positions(conn, data: List[Dict[str, Any]], mode: str, user_id: Optional[int]) -> Dict[str, Any]:
+    """
+    Import positions (only for user's accounts)
+    """
     cursor = conn.cursor()
     result = {"total": len(data), "imported": 0, "skipped": 0, "failed": 0, "deleted": 0, "errors": []}
 
-    # Replace mode: delete all existing positions
+    # Replace mode: delete positions for user's accounts
     if mode == "replace":
-        cursor.execute("DELETE FROM positions")
+        if user_id is None:
+            cursor.execute("""
+                DELETE FROM positions
+                WHERE account_id IN (SELECT id FROM accounts WHERE user_id IS NULL)
+            """)
+        else:
+            cursor.execute("""
+                DELETE FROM positions
+                WHERE account_id IN (SELECT id FROM accounts WHERE user_id = ?)
+            """, (user_id,))
         deleted_count = cursor.rowcount
         result["deleted"] = deleted_count
 
@@ -449,11 +601,15 @@ def _import_positions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, 
                 result["errors"].append("Missing account_id or code field")
                 continue
 
-            # Check if account exists
-            cursor.execute("SELECT id FROM accounts WHERE id = ?", (account_id,))
+            # Check if account exists and belongs to user
+            if user_id is None:
+                cursor.execute("SELECT id FROM accounts WHERE id = ? AND user_id IS NULL", (account_id,))
+            else:
+                cursor.execute("SELECT id FROM accounts WHERE id = ? AND user_id = ?", (account_id, user_id))
+
             if not cursor.fetchone():
                 result["skipped"] += 1
-                result["errors"].append(f"account_id={account_id} does not exist")
+                result["errors"].append(f"account_id={account_id} does not exist or does not belong to user")
                 continue
 
             # Check if position exists (merge mode)
@@ -477,14 +633,25 @@ def _import_positions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, 
     return result
 
 
-def _import_transactions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, Any]:
-    """Import transactions"""
+def _import_transactions(conn, data: List[Dict[str, Any]], mode: str, user_id: Optional[int]) -> Dict[str, Any]:
+    """
+    Import transactions (only for user's accounts)
+    """
     cursor = conn.cursor()
     result = {"total": len(data), "imported": 0, "skipped": 0, "failed": 0, "deleted": 0, "errors": []}
 
-    # Replace mode: delete all existing transactions
+    # Replace mode: delete transactions for user's accounts
     if mode == "replace":
-        cursor.execute("DELETE FROM transactions")
+        if user_id is None:
+            cursor.execute("""
+                DELETE FROM transactions
+                WHERE account_id IN (SELECT id FROM accounts WHERE user_id IS NULL)
+            """)
+        else:
+            cursor.execute("""
+                DELETE FROM transactions
+                WHERE account_id IN (SELECT id FROM accounts WHERE user_id = ?)
+            """, (user_id,))
         deleted_count = cursor.rowcount
         result["deleted"] = deleted_count
 
@@ -498,11 +665,15 @@ def _import_transactions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[st
                 result["errors"].append("Missing account_id or code field")
                 continue
 
-            # Check if account exists
-            cursor.execute("SELECT id FROM accounts WHERE id = ?", (account_id,))
+            # Check if account exists and belongs to user
+            if user_id is None:
+                cursor.execute("SELECT id FROM accounts WHERE id = ? AND user_id IS NULL", (account_id,))
+            else:
+                cursor.execute("SELECT id FROM accounts WHERE id = ? AND user_id = ?", (account_id, user_id))
+
             if not cursor.fetchone():
                 result["skipped"] += 1
-                result["errors"].append(f"account_id={account_id} does not exist")
+                result["errors"].append(f"account_id={account_id} does not exist or does not belong to user")
                 continue
 
             cursor.execute("""
@@ -533,14 +704,19 @@ def _import_transactions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[st
     return result
 
 
-def _import_subscriptions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[str, Any]:
-    """Import subscriptions"""
+def _import_subscriptions(conn, data: List[Dict[str, Any]], mode: str, user_id: Optional[int]) -> Dict[str, Any]:
+    """
+    Import subscriptions (set user_id)
+    """
     cursor = conn.cursor()
     result = {"total": len(data), "imported": 0, "skipped": 0, "failed": 0, "deleted": 0, "errors": []}
 
-    # Replace mode: delete all existing subscriptions
+    # Replace mode: delete user's existing subscriptions
     if mode == "replace":
-        cursor.execute("DELETE FROM subscriptions")
+        if user_id is None:
+            cursor.execute("DELETE FROM subscriptions WHERE user_id IS NULL")
+        else:
+            cursor.execute("DELETE FROM subscriptions WHERE user_id = ?", (user_id,))
         deleted_count = cursor.rowcount
         result["deleted"] = deleted_count
 
@@ -556,20 +732,32 @@ def _import_subscriptions(conn, data: List[Dict[str, Any]], mode: str) -> Dict[s
 
             # Check if subscription exists (merge mode)
             if mode == "merge":
-                cursor.execute("SELECT id FROM subscriptions WHERE code = ? AND email = ?", (code, email))
+                if user_id is None:
+                    cursor.execute(
+                        "SELECT id FROM subscriptions WHERE code = ? AND email = ? AND user_id IS NULL",
+                        (code, email)
+                    )
+                else:
+                    cursor.execute(
+                        "SELECT id FROM subscriptions WHERE code = ? AND email = ? AND user_id = ?",
+                        (code, email, user_id)
+                    )
+
                 if cursor.fetchone():
                     result["skipped"] += 1
                     continue
 
+            # Insert with user_id
             cursor.execute("""
                 INSERT INTO subscriptions (
-                    code, email, threshold_up, threshold_down,
+                    code, email, user_id, threshold_up, threshold_down,
                     enable_digest, digest_time, enable_volatility
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 code,
                 email,
+                user_id,
                 subscription.get("threshold_up"),
                 subscription.get("threshold_down"),
                 1 if subscription.get("enable_digest") else 0,
