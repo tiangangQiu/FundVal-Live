@@ -199,20 +199,31 @@ def _export_settings(user_id: Optional[int]) -> Dict[str, str]:
 
 def _export_ai_prompts(user_id: Optional[int]) -> List[Dict[str, Any]]:
     """
-    Export AI prompts
+    Export AI prompts (filtered by user_id)
 
-    TODO: ai_prompts 表目前没有 user_id 字段，暂时导出所有 prompts
-    未来需要添加 user_id 字段后再按用户过滤
+    单用户模式：导出 user_id IS NULL 的 prompts（系统级）
+    多用户模式：导出当前用户的 prompts
     """
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        # TODO: 添加 WHERE user_id = ? 过滤
-        cursor.execute("""
-            SELECT name, system_prompt, user_prompt, is_default, created_at, updated_at
-            FROM ai_prompts
-            ORDER BY id
-        """)
+
+        if user_id is None:
+            # 单用户模式：导出系统级 prompts
+            cursor.execute("""
+                SELECT name, system_prompt, user_prompt, is_default, created_at, updated_at
+                FROM ai_prompts
+                WHERE user_id IS NULL
+                ORDER BY id
+            """)
+        else:
+            # 多用户模式：导出当前用户的 prompts
+            cursor.execute("""
+                SELECT name, system_prompt, user_prompt, is_default, created_at, updated_at
+                FROM ai_prompts
+                WHERE user_id = ?
+                ORDER BY id
+            """, (user_id,))
 
         prompts = []
         for row in cursor.fetchall():
@@ -468,18 +479,17 @@ def _import_settings(conn, data: Dict[str, str], mode: str, user_id: Optional[in
 
 def _import_ai_prompts(conn, data: List[Dict[str, Any]], mode: str, user_id: Optional[int]) -> Dict[str, Any]:
     """
-    Import AI prompts
-
-    TODO: ai_prompts 表目前没有 user_id 字段，暂时不设置 user_id
-    未来需要添加 user_id 字段后再设置
+    Import AI prompts (set user_id)
     """
     cursor = conn.cursor()
     result = {"total": len(data), "imported": 0, "skipped": 0, "failed": 0, "deleted": 0, "errors": []}
 
-    # Replace mode: delete all existing prompts
+    # Replace mode: delete user's existing prompts
     if mode == "replace":
-        # TODO: 添加 WHERE user_id = ? 过滤
-        cursor.execute("DELETE FROM ai_prompts")
+        if user_id is None:
+            cursor.execute("DELETE FROM ai_prompts WHERE user_id IS NULL")
+        else:
+            cursor.execute("DELETE FROM ai_prompts WHERE user_id = ?", (user_id,))
         deleted_count = cursor.rowcount
         result["deleted"] = deleted_count
 
@@ -493,20 +503,24 @@ def _import_ai_prompts(conn, data: List[Dict[str, Any]], mode: str, user_id: Opt
 
             # Check if prompt with same name exists (merge mode)
             if mode == "merge":
-                # TODO: 添加 AND user_id = ? 过滤
-                cursor.execute("SELECT id FROM ai_prompts WHERE name = ?", (name,))
+                if user_id is None:
+                    cursor.execute("SELECT id FROM ai_prompts WHERE name = ? AND user_id IS NULL", (name,))
+                else:
+                    cursor.execute("SELECT id FROM ai_prompts WHERE name = ? AND user_id = ?", (name, user_id))
+
                 if cursor.fetchone():
                     result["skipped"] += 1
                     continue
 
-            # TODO: 添加 user_id 字段
+            # Insert with user_id
             cursor.execute("""
-                INSERT INTO ai_prompts (name, system_prompt, user_prompt, is_default)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO ai_prompts (name, system_prompt, user_prompt, user_id, is_default)
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 name,
                 prompt.get("system_prompt", ""),
                 prompt.get("user_prompt", ""),
+                user_id,
                 1 if prompt.get("is_default") else 0
             ))
             result["imported"] += 1

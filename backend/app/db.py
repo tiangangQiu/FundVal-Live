@@ -582,6 +582,64 @@ def init_db():
         cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (7)")
         logger.info("Migration 7 completed: accounts table UNIQUE constraint updated")
 
+    # ============================================================================
+    # Migration 8: 为 ai_prompts 表添加 user_id 字段
+    # 支持每个用户独立的 AI prompts
+    # ============================================================================
+    cursor.execute("SELECT version FROM schema_version WHERE version = 8")
+    if not cursor.fetchone():
+        logger.info("Running migration 8: Add user_id to ai_prompts table")
+
+        # 1. 检查 ai_prompts 表是否存在
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='ai_prompts'")
+        if not cursor.fetchone():
+            logger.warning("ai_prompts table does not exist, skipping migration 8")
+        else:
+            # 2. 检查是否已有 user_id 列
+            cursor.execute("PRAGMA table_info(ai_prompts)")
+            columns = {row[1]: row for row in cursor.fetchall()}
+
+            if 'user_id' in columns:
+                logger.info("user_id column already exists in ai_prompts, skipping migration 8")
+            else:
+                # 3. 创建新表（带 user_id 字段）
+                cursor.execute("""
+                    CREATE TABLE ai_prompts_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name TEXT NOT NULL,
+                        system_prompt TEXT NOT NULL,
+                        user_prompt TEXT NOT NULL,
+                        user_id INTEGER,
+                        is_default INTEGER DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(user_id, name),
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    )
+                """)
+
+                # 4. 复制数据（现有 prompts 设置为 user_id = NULL，表示系统级/共享）
+                cursor.execute("""
+                    INSERT INTO ai_prompts_new (id, name, system_prompt, user_prompt, user_id, is_default, created_at, updated_at)
+                    SELECT id, name, system_prompt, user_prompt, NULL, is_default, created_at, updated_at
+                    FROM ai_prompts
+                """)
+
+                # 5. 删除旧表
+                cursor.execute("DROP TABLE ai_prompts")
+
+                # 6. 重命名新表
+                cursor.execute("ALTER TABLE ai_prompts_new RENAME TO ai_prompts")
+
+                # 7. 重建索引
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_ai_prompts_user_id ON ai_prompts(user_id)
+                """)
+
+                logger.info("Migration 8 completed: ai_prompts table now has user_id column")
+
+        cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (8)")
+
     conn.commit()
     conn.close()
     logger.info("Database initialized.")
