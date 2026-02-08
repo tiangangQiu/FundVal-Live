@@ -11,6 +11,7 @@ from ..auth import (
     delete_session,
     get_current_user,
     require_auth,
+    require_admin,
     is_multi_user_mode,
     User,
     SESSION_COOKIE_NAME,
@@ -237,3 +238,199 @@ def change_password(
         return {"message": "密码修改成功"}
     finally:
         conn.close()
+
+
+# ============================================================================
+# Admin API Endpoints
+# ============================================================================
+
+class CreateUserRequest(BaseModel):
+    username: str
+    password: str
+    is_admin: bool = False
+
+
+class AllowRegistrationRequest(BaseModel):
+    allow: bool
+
+
+@router.post("/admin/users", response_model=UserResponse)
+def create_user(request: CreateUserRequest, admin: User = Depends(require_admin)):
+    """
+    创建用户（需要管理员权限）
+
+    Args:
+        request: 创建用户请求（username, password, is_admin）
+        admin: 当前管理员（通过 require_admin 获取）
+
+    Returns:
+        UserResponse: 新用户信息
+
+    Raises:
+        HTTPException: 400 用户名已存在
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        # 检查用户名是否已存在
+        cursor.execute(
+            "SELECT id FROM users WHERE username = ?",
+            (request.username,)
+        )
+        if cursor.fetchone() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="用户名已存在"
+            )
+
+        # 创建用户
+        password_hash = hash_password(request.password)
+        cursor.execute(
+            "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, ?)",
+            (request.username, password_hash, int(request.is_admin))
+        )
+        user_id = cursor.lastrowid
+        conn.commit()
+
+        return UserResponse(
+            id=user_id,
+            username=request.username,
+            is_admin=request.is_admin
+        )
+    finally:
+        conn.close()
+
+
+@router.get("/admin/users", response_model=list[UserResponse])
+def list_users(admin: User = Depends(require_admin)):
+    """
+    列出所有用户（需要管理员权限）
+
+    Args:
+        admin: 当前管理员（通过 require_admin 获取）
+
+    Returns:
+        list[UserResponse]: 用户列表
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id, username, is_admin, created_at FROM users ORDER BY id"
+        )
+        rows = cursor.fetchall()
+
+        return [
+            UserResponse(
+                id=row[0],
+                username=row[1],
+                is_admin=bool(row[2])
+            )
+            for row in rows
+        ]
+    finally:
+        conn.close()
+
+
+@router.delete("/admin/users/{user_id}")
+def delete_user(user_id: int, admin: User = Depends(require_admin)):
+    """
+    删除用户（需要管理员权限）
+
+    Args:
+        user_id: 要删除的用户 ID
+        admin: 当前管理员（通过 require_admin 获取）
+
+    Returns:
+        dict: 成功消息
+
+    Raises:
+        HTTPException: 400 不允许删除自己或最后一个管理员，404 用户不存在
+    """
+    # 不允许删除自己
+    if user_id == admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不允许删除自己"
+        )
+
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+
+        # 检查用户是否存在
+        cursor.execute(
+            "SELECT is_admin FROM users WHERE id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="用户不存在"
+            )
+
+        is_admin = bool(row[0])
+
+        # 如果要删除的是管理员，检查是否是最后一个管理员
+        if is_admin:
+            cursor.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1")
+            admin_count = cursor.fetchone()[0]
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="不允许删除最后一个管理员"
+                )
+
+        # 级联删除用户的所有数据
+        # 1. 删除用户的账户
+        cursor.execute("DELETE FROM accounts WHERE user_id = ?", (user_id,))
+
+        # 2. 删除用户的配置
+        cursor.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
+
+        # 3. 删除用户的订阅
+        cursor.execute("DELETE FROM subscriptions WHERE user_id = ?", (user_id,))
+
+        # 4. 删除用户
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+        conn.commit()
+
+        return {"message": "用户已删除"}
+    finally:
+        conn.close()
+
+
+@router.put("/admin/settings/allow-registration")
+def set_allow_registration(
+    request: AllowRegistrationRequest,
+    admin: User = Depends(require_admin)
+):
+    """
+    控制注册开关（需要管理员权限）
+
+    Args:
+        request: 注册开关请求（allow）
+        admin: 当前管理员（通过 require_admin 获取）
+
+    Returns:
+        dict: 成功消息
+    """
+    conn = get_db_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE settings SET value = ? WHERE key = 'allow_registration'",
+            ('1' if request.allow else '0',)
+        )
+        conn.commit()
+
+        return {
+            "message": "注册开关已更新",
+            "allow_registration": request.allow
+        }
+    finally:
+        conn.close()
+
