@@ -228,31 +228,27 @@ class AIService:
                 for h in fund_info["holdings"][:10]
             ])
 
-        # Prepare fund_info dict for prompt
-        fund_info_dict = {
-            "代码": fund_id,
-            "名称": fund_name,
-            "类型": fund_info.get("type", "未知"),
-            "基金经理": fund_info.get("manager", "未知"),
-            "最新净值": fund_info.get("nav", "--"),
-            "实时估值": fund_info.get("estimate", "--"),
-            "估值涨跌": f"{fund_info.get('estRate', 0)}%",
-            "持仓集中度": fund_info.get("indicators", {}).get("concentration", "--"),
-            "前十持仓": holdings_str or "暂无持仓数据"
-        }
-
-        # Prepare technical_indicators dict for prompt
-        technical_indicators_dict = {
-            "夏普比率": technical_indicators.get("sharpe", "--"),
-            "年化波动率": technical_indicators.get("volatility", "--"),
-            "最大回撤": technical_indicators.get("max_drawdown", "--"),
-            "年化回报": technical_indicators.get("annual_return", "--")
-        }
-
+        # Prepare variables for prompt template (flat structure for compatibility)
         variables = {
-            "fund_info": str(fund_info_dict),
+            # Basic info
+            "fund_code": fund_id,
+            "fund_name": fund_name,
+            "fund_type": fund_info.get("type", "未知"),
+            "manager": fund_info.get("manager", "未知"),
+            "nav": fund_info.get("nav", "--"),
+            "estimate": fund_info.get("estimate", "--"),
+            "est_rate": f"{fund_info.get('estRate', 0)}%",
+            "concentration": fund_info.get("indicators", {}).get("concentration", "--"),
+            "holdings": holdings_str or "暂无持仓数据",
+
+            # Technical indicators
+            "sharpe": technical_indicators.get("sharpe", "--"),
+            "volatility": technical_indicators.get("volatility", "--"),
+            "max_drawdown": technical_indicators.get("max_drawdown", "--"),
+            "annual_return": technical_indicators.get("annual_return", "--"),
+
+            # History
             "history_summary": history_summary,
-            "technical_indicators": str(technical_indicators_dict)
         }
 
         # 2. Get prompt template and replace variables (with user_id filtering)

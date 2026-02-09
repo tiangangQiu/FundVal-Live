@@ -198,26 +198,36 @@ def get_combined_valuation(code: str) -> Dict[str, Any]:
 def search_funds(q: str) -> List[Dict[str, Any]]:
     """
     Search funds by keyword using local SQLite DB.
+    Supports both code and name search.
+    Results are ordered by relevance: exact code match > code prefix > name match
     """
     if not q:
         return []
 
     q_clean = q.strip()
     pattern = f"%{q_clean}%"
-    
+    prefix_pattern = f"{q_clean}%"
+
     conn = get_db_connection()
     cursor = conn.cursor()
-    
+
     try:
         cursor.execute("""
-            SELECT code, name, type 
-            FROM funds 
-            WHERE code LIKE ? OR name LIKE ? 
-            LIMIT 20
-        """, (pattern, pattern))
-        
+            SELECT code, name, type,
+                CASE
+                    WHEN code = ? THEN 1
+                    WHEN code LIKE ? THEN 2
+                    WHEN name LIKE ? THEN 3
+                    ELSE 4
+                END as relevance
+            FROM funds
+            WHERE code LIKE ? OR name LIKE ?
+            ORDER BY relevance, code
+            LIMIT 30
+        """, (q_clean, prefix_pattern, pattern, pattern, pattern))
+
         rows = cursor.fetchall()
-        
+
         results = []
         for row in rows:
             results.append({

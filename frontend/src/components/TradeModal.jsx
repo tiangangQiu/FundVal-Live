@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { X, History } from 'lucide-react';
-import { getTransactions } from '../services/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, History, Search } from 'lucide-react';
+import { getTransactions, searchFunds } from '../services/api';
 import { getDefaultTradeDate, buildTradeTime } from '../utils/date';
 
 /**
@@ -13,18 +13,69 @@ export function PositionModal({ isOpen, onClose, onSubmit, editingPos, submittin
   const [profitData, setProfitData] = useState({ invest: '', profit: '', currentNav: '' });
   const [fetchingNav, setFetchingNav] = useState(false);
 
+  // Fund search states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchTimeoutRef = useRef(null);
+  const searchInputRef = useRef(null);
+
   useEffect(() => {
     if (isOpen) {
       if (editingPos) {
         setFormData({ code: editingPos.code, cost: editingPos.cost, shares: editingPos.shares });
+        setSearchQuery('');
       } else {
         setFormData({ code: '', cost: '', shares: '' });
+        setSearchQuery('');
       }
       setShowTransactions(false);
       setInputMode('manual');
       setProfitData({ invest: '', profit: '', currentNav: '' });
+      setSearchResults([]);
+      setShowSearchResults(false);
     }
   }, [isOpen, editingPos]);
+
+  // Search funds when query changes
+  useEffect(() => {
+    if (!searchQuery || editingPos) {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const results = await searchFunds(searchQuery);
+        setSearchResults(results);
+        setShowSearchResults(true);
+      } catch (error) {
+        console.error('Search failed:', error);
+        setSearchResults([]);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery, editingPos]);
+
+  const handleSelectFund = (fund) => {
+    setFormData({ ...formData, code: fund.id });
+    setSearchQuery(`${fund.id} ${fund.name}`);
+    setShowSearchResults(false);
+  };
 
   // Fetch current NAV when code changes in profit mode
   useEffect(() => {
@@ -92,16 +143,57 @@ export function PositionModal({ isOpen, onClose, onSubmit, editingPos, submittin
         <div className="p-6 overflow-y-auto flex-1">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">基金代码</label>
-              <input
-                type="text"
-                value={formData.code}
-                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
-                disabled={!!editingPos}
-                placeholder="如: 005827"
-                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono disabled:opacity-60"
-                required
-              />
+              <label className="block text-sm font-medium text-slate-700 mb-1">基金代码或名称</label>
+              <div className="relative">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={editingPos ? formData.code : searchQuery}
+                    onChange={(e) => {
+                      if (!editingPos) {
+                        setSearchQuery(e.target.value);
+                        setFormData({ ...formData, code: '' });
+                      }
+                    }}
+                    disabled={!!editingPos}
+                    placeholder="输入代码或名称搜索，如: 005827 或 易方达蓝筹"
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-60"
+                    required={!!editingPos}
+                  />
+                </div>
+                {showSearchResults && searchResults.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {searchResults.map((fund) => (
+                      <button
+                        key={fund.id}
+                        type="button"
+                        onClick={() => handleSelectFund(fund)}
+                        className="w-full px-3 py-2 text-left hover:bg-slate-50 border-b border-slate-100 last:border-b-0 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-medium text-slate-800 truncate">{fund.name}</div>
+                            <div className="text-xs text-slate-500 font-mono">{fund.id}</div>
+                          </div>
+                          <div className="text-xs text-slate-400 shrink-0">{fund.type}</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showSearchResults && searchResults.length === 0 && !searchLoading && searchQuery && (
+                  <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg p-3 text-sm text-slate-500 text-center">
+                    未找到匹配的基金
+                  </div>
+                )}
+              </div>
+              {!editingPos && formData.code && (
+                <div className="mt-1 text-xs text-emerald-600">
+                  ✓ 已选择: {formData.code}
+                </div>
+              )}
             </div>
 
             {!editingPos && (
