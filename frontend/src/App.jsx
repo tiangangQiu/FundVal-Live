@@ -271,9 +271,13 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
              const detail = await getFundDetail(fundMeta.id);
              const newFund = { ...fundMeta, ...detail, trusted: true };
 
-             if (!watchlist.find(f => f.id === newFund.id)) {
-                  setWatchlist(prev => [...prev, newFund]);
-             }
+             setWatchlist(prev => {
+               // 检查是否已存在
+               if (prev.find(f => f.id === newFund.id)) {
+                 return prev; // 已存在，不添加
+               }
+               return [...prev, newFund];
+             });
              setSearchQuery('');
            } catch(e) {
              alert(`无法获取基金 ${fundMeta.name} 的详情数据`);
@@ -323,8 +327,14 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
       try {
         const detail = await getFundDetail(fundId);
         const newFund = { ...detail, trusted: true };
-        // 临时添加到 watchlist（不会持久化，因为用户没有主动添加）
-        setWatchlist(prev => [...prev, newFund]);
+        // 临时添加到 watchlist，添加前检查避免重复
+        setWatchlist(prev => {
+          // 再次检查是否已存在（防止竞态条件）
+          if (prev.find(f => f.id === newFund.id)) {
+            return prev; // 已存在，不添加
+          }
+          return [...prev, newFund];
+        });
         setDetailFundId(fundId);
       } catch (e) {
         alert('无法加载基金详情');
@@ -391,7 +401,16 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
           if (validFunds.length > 0) {
               console.log('Adding funds to watchlist:', validFunds.map(f => ({ id: f.id, name: f.name })));
               setWatchlist(prev => {
-                  const updated = [...prev, ...validFunds];
+                  // 过滤掉已存在的基金，避免重复
+                  const existingIds = new Set(prev.map(f => f.id));
+                  const newFunds = validFunds.filter(f => !existingIds.has(f.id));
+
+                  if (newFunds.length === 0) {
+                      console.log('All funds already in watchlist');
+                      return prev;
+                  }
+
+                  const updated = [...prev, ...newFunds];
                   console.log('Updated watchlist length:', updated.length);
                   return updated;
               });
