@@ -454,27 +454,49 @@ function TransactionsView({ code, currentAccount }) {
             <tr>
               <th className="px-3 py-2 text-left font-medium text-slate-500">日期</th>
               <th className="px-3 py-2 text-left font-medium text-slate-500">类型</th>
+              <th className="px-3 py-2 text-left font-medium text-slate-500">状态</th>
               <th className="px-3 py-2 text-right font-medium text-slate-500">金额</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50">
-            {paginatedTransactions.map((t) => (
-              <tr key={t.id}>
-                <td className="px-3 py-2 text-slate-600">
-                  {(t.created_at || '').slice(0, 10)}
-                </td>
-                <td className="px-3 py-2">
-                  <span className={t.op_type === 'add' ? 'text-emerald-600' : 'text-amber-600'}>
-                    {t.op_type === 'add' ? '加仓' : '减仓'}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-right font-mono">
-                  {t.op_type === 'add'
-                    ? (t.amount_cny != null ? `¥${Number(t.amount_cny).toFixed(2)}` : '--')
-                    : (t.amount_cny != null ? `¥${Number(t.amount_cny).toFixed(2)}` : (t.shares_redeemed != null ? `${Number(t.shares_redeemed).toLocaleString()} 份` : '--'))}
-                </td>
-              </tr>
-            ))}
+            {paginatedTransactions.map((t) => {
+              const isPending = !t.applied_at || !t.confirm_nav;
+              return (
+                <tr key={t.id} className={isPending ? 'bg-amber-50/30' : ''}>
+                  <td className="px-3 py-2 text-slate-600">
+                    {(t.created_at || '').slice(0, 10)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span className={t.op_type === 'add' ? 'text-emerald-600' : 'text-amber-600'}>
+                      {t.op_type === 'add' ? '加仓' : '减仓'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    {isPending ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-amber-100 text-amber-700 border border-amber-200">
+                        <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        待确认
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-emerald-100 text-emerald-700 border border-emerald-200">
+                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                        已确认
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono">
+                    {t.op_type === 'add'
+                      ? (t.amount_cny != null ? `¥${Number(t.amount_cny).toFixed(2)}` : '--')
+                      : (t.amount_cny != null ? `¥${Number(t.amount_cny).toFixed(2)}` : (t.shares_redeemed != null ? `${Number(t.shares_redeemed).toLocaleString()} 份` : '--'))}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

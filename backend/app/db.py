@@ -14,8 +14,16 @@ def get_db_connection():
 
     conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False, timeout=30.0)
     conn.row_factory = sqlite3.Row
-    # Enable WAL mode for better concurrency
+
+    # Performance optimizations for concurrent access
+    # WAL mode is persistent, only needs to be set once (already enabled)
+    # But we set it here to ensure it's enabled even if DB is recreated
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes, still safe with WAL
+    conn.execute("PRAGMA cache_size=-64000")   # 64MB cache
+    conn.execute("PRAGMA temp_store=MEMORY")   # Use memory for temp tables
+    conn.execute("PRAGMA busy_timeout=30000")  # 30s timeout for lock contention
+
     return conn
 
 
