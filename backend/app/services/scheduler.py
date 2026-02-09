@@ -82,9 +82,10 @@ def collect_intraday_snapshots():
     if current_time < "09:35" or current_time > "15:05":
         return
 
-    # 3. Get holdings (only funds with shares > 0)
+    # 3. Get holdings (only funds with shares > 0, across all users)
     conn = get_db_connection()
     cursor = conn.cursor()
+    # 获取所有用户的持仓基金（去重）
     cursor.execute("SELECT DISTINCT code FROM positions WHERE shares > 0")
     codes = [row["code"] for row in cursor.fetchall()]
 
@@ -97,16 +98,20 @@ def collect_intraday_snapshots():
     time_str = now_cst.strftime("%H:%M")
 
     collected = 0
+    skipped = 0
     for code in codes:
         try:
             data = get_combined_valuation(code)
             if data and data.get("estimate"):
                 cursor.execute("""
-                    INSERT OR IGNORE INTO fund_intraday_snapshots
+                    INSERT OR REPLACE INTO fund_intraday_snapshots
                     (fund_code, date, time, estimate)
                     VALUES (?, ?, ?, ?)
                 """, (code, date_str, time_str, float(data["estimate"])))
                 collected += 1
+            else:
+                skipped += 1
+                logger.warning(f"Skipped {code}: no estimate data (data={data})")
             time.sleep(0.2)  # Avoid API rate limiting (reduced from 0.5s)
         except Exception as e:
             logger.error(f"Intraday collect failed for {code}: {e}")
@@ -115,7 +120,7 @@ def collect_intraday_snapshots():
     conn.close()
 
     if collected > 0:
-        logger.info(f"Collected {collected} intraday snapshots at {time_str}")
+        logger.info(f"Collected {collected} intraday snapshots at {time_str} (skipped {skipped})")
 
 def cleanup_old_intraday_data():
     """
