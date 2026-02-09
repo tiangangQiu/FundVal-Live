@@ -246,15 +246,17 @@ def get_aggregate_positions(current_user: Optional[User] = Depends(get_current_u
 
                     if not name:
                         conn_temp = get_db_connection()
-                        cursor_temp = conn_temp.cursor()
-                        cursor_temp.execute("SELECT name, type FROM funds WHERE code = ?", (code,))
-                        db_row = cursor_temp.fetchone()
-                        conn_temp.close()
-                        if db_row:
-                            name = db_row["name"]
-                            fund_type = db_row["type"]
-                        else:
-                            name = code
+                        try:
+                            cursor_temp = conn_temp.cursor()
+                            cursor_temp.execute("SELECT name, type FROM funds WHERE code = ?", (code,))
+                            db_row = cursor_temp.fetchone()
+                            if db_row:
+                                name = db_row["name"]
+                                fund_type = db_row["type"]
+                            else:
+                                name = code
+                        finally:
+                            conn_temp.close()
 
                     if not fund_type:
                         fund_type = get_fund_type(code, name)
@@ -262,14 +264,16 @@ def get_aggregate_positions(current_user: Optional[User] = Depends(get_current_u
                     from datetime import datetime
                     today_str = datetime.now().strftime("%Y-%m-%d")
                     conn_temp = get_db_connection()
-                    cursor_temp = conn_temp.cursor()
-                    cursor_temp.execute(
-                        "SELECT date FROM fund_history WHERE code = ? ORDER BY date DESC LIMIT 1",
-                        (code,)
-                    )
-                    latest_nav_row = cursor_temp.fetchone()
-                    conn_temp.close()
-                    nav_updated_today = latest_nav_row and latest_nav_row["date"] == today_str
+                    try:
+                        cursor_temp = conn_temp.cursor()
+                        cursor_temp.execute(
+                            "SELECT date FROM fund_history WHERE code = ? ORDER BY date DESC LIMIT 1",
+                            (code,)
+                        )
+                        latest_nav_row = cursor_temp.fetchone()
+                        nav_updated_today = latest_nav_row and latest_nav_row["date"] == today_str
+                    finally:
+                        conn_temp.close()
 
                     nav = float(data.get("nav", 0.0))
                     estimate = float(data.get("estimate", 0.0))

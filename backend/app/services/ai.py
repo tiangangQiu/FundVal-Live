@@ -72,11 +72,40 @@ class AIService:
             ("user", row["user_prompt"])
         ])
 
-    def _init_llm(self, fast_mode=True):
+    def _init_llm(self, fast_mode=True, user_id: Optional[int] = None):
         # 每次调用时重新读取配置，支持热重载
-        api_base = Config.OPENAI_API_BASE
-        api_key = Config.OPENAI_API_KEY
-        model = Config.AI_MODEL_NAME
+        # 按 user_id 读取配置
+        from ..crypto import decrypt_value
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        if user_id is None:
+            # 单用户模式：读取 settings 表中 user_id IS NULL 的配置
+            cursor.execute("""
+                SELECT key, value, encrypted FROM settings
+                WHERE user_id IS NULL
+            """)
+        else:
+            # 多用户模式：读取 user_settings 表中当前用户的配置
+            cursor.execute("""
+                SELECT key, value, encrypted FROM user_settings
+                WHERE user_id = ?
+            """, (user_id,))
+
+        rows = cursor.fetchall()
+        conn.close()
+
+        settings = {}
+        for row in rows:
+            key, value, encrypted = row
+            if encrypted and value:
+                value = decrypt_value(value)
+            settings[key] = value
+
+        api_base = settings.get("OPENAI_API_BASE") or "https://api.openai.com/v1"
+        api_key = settings.get("OPENAI_API_KEY") or ""
+        model = settings.get("AI_MODEL_NAME") or "gpt-3.5-turbo"
 
         if not api_key:
             return None
@@ -141,13 +170,12 @@ class AIService:
 
     async def analyze_fund(self, fund_info: Dict[str, Any], prompt_id: Optional[int] = None, user_id: Optional[int] = None) -> Dict[str, Any]:
         # 每次调用时重新初始化 LLM，支持配置热重载
-        llm = self._init_llm()
+        llm = self._init_llm(user_id=user_id)
 
         if not llm:
             return {
-                "summary": "未配置 LLM API Key，无法进行分析。",
-                "risk_level": "未知",
-                "analysis_report": "请在设置页面配置 OpenAI API Key 以启用 AI 分析功能。",
+                "markdown": "## 配置错误\n\n未配置 OpenAI API Key，请前往设置页面配置。",
+                "indicators": {"status": "未知", "desc": "无法分析"},
                 "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
             }
 
@@ -181,7 +209,7 @@ class AIService:
                 sharpe_diff = abs(expected_sharpe - sharpe_val)
 
                 if sharpe_diff > 0.3:
-                    consistency_note = f"\n⚠️ 数据一致性警告：夏普比率 {sharpe_val} 与计算值 {expected_sharpe:.2f} 偏差 {sharpe_diff:.2f}，可能存在数据异常。"
+                    consistency_note = f"\n 数据一致性警告：夏普比率 {sharpe_val} 与计算值 {expected_sharpe:.2f} 偏差 {sharpe_diff:.2f}，可能存在数据异常。"
                 else:
                     consistency_note = f"\n✓ 数据自洽性验证通过：夏普比率与年化回报/波动率数学一致（偏差 {sharpe_diff:.2f}）。"
         except:
@@ -200,21 +228,31 @@ class AIService:
                 for h in fund_info["holdings"][:10]
             ])
 
+        # Prepare fund_info dict for prompt
+        fund_info_dict = {
+            "代码": fund_id,
+            "名称": fund_name,
+            "类型": fund_info.get("type", "未知"),
+            "基金经理": fund_info.get("manager", "未知"),
+            "最新净值": fund_info.get("nav", "--"),
+            "实时估值": fund_info.get("estimate", "--"),
+            "估值涨跌": f"{fund_info.get('estRate', 0)}%",
+            "持仓集中度": fund_info.get("indicators", {}).get("concentration", "--"),
+            "前十持仓": holdings_str or "暂无持仓数据"
+        }
+
+        # Prepare technical_indicators dict for prompt
+        technical_indicators_dict = {
+            "夏普比率": technical_indicators.get("sharpe", "--"),
+            "年化波动率": technical_indicators.get("volatility", "--"),
+            "最大回撤": technical_indicators.get("max_drawdown", "--"),
+            "年化回报": technical_indicators.get("annual_return", "--")
+        }
+
         variables = {
-            "fund_code": fund_id,
-            "fund_name": fund_name,
-            "fund_type": fund_info.get("type", "未知"),
-            "manager": fund_info.get("manager", "未知"),
-            "nav": fund_info.get("nav", "--"),
-            "estimate": fund_info.get("estimate", "--"),
-            "est_rate": fund_info.get("estRate", 0),
-            "sharpe": technical_indicators.get("sharpe", "--"),
-            "volatility": technical_indicators.get("volatility", "--"),
-            "max_drawdown": technical_indicators.get("max_drawdown", "--"),
-            "annual_return": technical_indicators.get("annual_return", "--"),
-            "concentration": fund_info.get("indicators", {}).get("concentration", "--"),
-            "holdings": holdings_str or "暂无持仓数据",
-            "history_summary": history_summary
+            "fund_info": str(fund_info_dict),
+            "history_summary": history_summary,
+            "technical_indicators": str(technical_indicators_dict)
         }
 
         # 2. Get prompt template and replace variables (with user_id filtering)
@@ -223,64 +261,33 @@ class AIService:
         # 3. Invoke LLM
         chain = prompt_template | llm | StrOutputParser()
 
+        # Import json at module level to avoid UnboundLocalError
+        import json
+
         try:
-            raw_result = await chain.ainvoke(variables)
+            markdown_result = await chain.ainvoke(variables)
 
-            # 4. Parse Result
-            clean_json = raw_result.strip()
-            if "```json" in clean_json:
-                clean_json = clean_json.split("```json")[1].split("```")[0]
-            elif "```" in clean_json:
-                clean_json = clean_json.split("```")[1].split("```")[0]
+            # Clean up markdown (remove code blocks if present)
+            clean_markdown = markdown_result.strip()
+            if "```markdown" in clean_markdown:
+                clean_markdown = clean_markdown.split("```markdown")[1].split("```")[0].strip()
+            elif "```" in clean_markdown:
+                # If wrapped in generic code blocks, extract content
+                clean_markdown = clean_markdown.split("```")[1].split("```")[0].strip()
 
-            import json
-            result = json.loads(clean_json)
-
-            # 验证必需字段
-            required_fields = ["summary", "risk_level", "analysis_report", "suggestions"]
-            missing_fields = [f for f in required_fields if f not in result]
-
-            if missing_fields:
-                return {
-                    "summary": "AI 返回格式错误",
-                    "risk_level": "未知",
-                    "analysis_report": f"AI 返回的 JSON 缺少必需字段：{', '.join(missing_fields)}\n\n原始输出：\n{raw_result[:500]}",
-                    "suggestions": ["请检查提示词是否要求返回完整的 JSON 格式"],
-                    "indicators": indicators,
-                    "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
-                }
-
-            # 验证字段类型
-            if not isinstance(result.get("suggestions"), list):
-                result["suggestions"] = [str(result.get("suggestions", ""))]
-
-            # Enrich with indicators for frontend display
-            result["indicators"] = indicators
-            result["timestamp"] = datetime.datetime.now().strftime("%H:%M:%S")
-
-            return result
-
-        except json.JSONDecodeError as e:
-            print(f"JSON Parse Error: {e}")
+            # Return markdown directly with metadata
             return {
-                "summary": "AI 返回格式错误",
-                "risk_level": "未知",
-                "analysis_report": f"AI 未返回有效的 JSON 格式。\n\n错误：{str(e)}\n\n原始输出：\n{raw_result[:500]}",
-                "suggestions": [
-                    "请检查提示词是否要求返回纯 JSON 格式",
-                    "确保 JSON 格式正确（不要有多余的逗号、引号等）",
-                    "不要用 Markdown 代码块包裹 JSON"
-                ],
+                "markdown": clean_markdown,
                 "indicators": indicators,
                 "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
             }
+
         except Exception as e:
-            print(f"AI Analysis Error: {e}")
+            import traceback
+            error_detail = traceback.format_exc()
+            print(f"AI Analysis Error: {e}\n{error_detail}")
             return {
-                "summary": "分析生成失败",
-                "risk_level": "未知",
-                "analysis_report": f"LLM 调用或解析失败: {str(e)}",
-                "suggestions": ["请检查 API 配置和提示词格式"],
+                "markdown": f"## 分析失败\n\nLLM 调用失败: {str(e)}\n\n请检查 API 配置和提示词格式。",
                 "indicators": indicators,
                 "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
             }

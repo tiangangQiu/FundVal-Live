@@ -2,6 +2,7 @@ import sqlite3
 import logging
 import os
 from pathlib import Path
+from contextlib import contextmanager
 from .config import Config
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,24 @@ def get_db_connection():
     # Enable WAL mode for better concurrency
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
+
+
+@contextmanager
+def db_connection():
+    """
+    Context manager for database connections to prevent leaks.
+
+    Usage:
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(...)
+    """
+    conn = get_db_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
 
 def init_db():
     """Initialize the database schema with migration support."""
@@ -639,6 +658,42 @@ def init_db():
                 logger.info("Migration 8 completed: ai_prompts table now has user_id column")
 
         cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (8)")
+
+    # Migration 9: Add user_id to settings table for multi-user support
+    if current_version < 9:
+        logger.info("Running migration 9: Add user_id to settings table")
+
+        # 1. Create new settings table with user_id
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS settings_new (
+                key TEXT NOT NULL,
+                value TEXT,
+                encrypted INTEGER DEFAULT 0,
+                user_id INTEGER,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (key, user_id),
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
+        # 2. Copy existing settings to new table (assign to user_id = NULL for single-user mode)
+        cursor.execute("""
+            INSERT INTO settings_new (key, value, encrypted, user_id, updated_at)
+            SELECT key, value, encrypted, NULL, updated_at
+            FROM settings
+        """)
+
+        # 3. Drop old table and rename new table
+        cursor.execute("DROP TABLE settings")
+        cursor.execute("ALTER TABLE settings_new RENAME TO settings")
+
+        # 4. Create index for faster lookups
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_settings_user_id ON settings(user_id)
+        """)
+
+        cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (9)")
+        logger.info("Migration 9 completed: settings table now supports multi-user")
 
     conn.commit()
     conn.close()

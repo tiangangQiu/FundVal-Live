@@ -171,8 +171,8 @@ def _export_settings(user_id: Optional[int]) -> Dict[str, str]:
         cursor = conn.cursor()
 
         if user_id is None:
-            # 单用户模式：从 settings 表读取
-            cursor.execute("SELECT key, value, encrypted FROM settings")
+            # 单用户模式：从 settings 表读取（user_id IS NULL）
+            cursor.execute("SELECT key, value, encrypted FROM settings WHERE user_id IS NULL")
         else:
             # 多用户模式：从 user_settings 表读取
             cursor.execute(
@@ -450,11 +450,11 @@ def _import_settings(conn, data: Dict[str, str], mode: str, user_id: Optional[in
 
         try:
             if user_id is None:
-                # 单用户模式：导入到 settings 表
+                # 单用户模式：导入到 settings 表（user_id = NULL）
                 cursor.execute("""
-                    INSERT INTO settings (key, value, encrypted, updated_at)
-                    VALUES (?, ?, 0, CURRENT_TIMESTAMP)
-                    ON CONFLICT(key) DO UPDATE SET
+                    INSERT INTO settings (key, value, encrypted, user_id, updated_at)
+                    VALUES (?, ?, 0, NULL, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key, user_id) DO UPDATE SET
                         value = excluded.value,
                         updated_at = CURRENT_TIMESTAMP
                 """, (key, value))

@@ -31,9 +31,7 @@ fi
 # 2. Build Frontend
 echo -e "${BLUE}>>> [1/2] Building Frontend...${NC}"
 cd frontend || exit
-if [ ! -d "node_modules" ]; then
-    npm install > /dev/null 2>&1
-fi
+npm ci > /dev/null 2>&1
 npm run build > ../logs/frontend-build.log 2>&1
 cd ..
 

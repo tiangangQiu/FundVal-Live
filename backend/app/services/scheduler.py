@@ -66,7 +66,7 @@ from ..services.trading_calendar import is_trading_day
 
 def collect_intraday_snapshots():
     """
-    Collect intraday valuation snapshots for holdings (every N minutes during trading hours).
+    Collect intraday valuation snapshots for holdings + watchlist (every N minutes during trading hours).
     Only runs on trading days between 09:35-15:05.
     Interval is configurable via INTRADAY_COLLECT_INTERVAL setting.
     """
@@ -82,12 +82,38 @@ def collect_intraday_snapshots():
     if current_time < "09:35" or current_time > "15:05":
         return
 
-    # 3. Get holdings (only funds with shares > 0, across all users)
+    # 3. Get holdings + watchlist (all funds users care about)
     conn = get_db_connection()
     cursor = conn.cursor()
-    # 获取所有用户的持仓基金（去重）
+
+    # Get all holdings (from all users)
     cursor.execute("SELECT DISTINCT code FROM positions WHERE shares > 0")
     codes = [row["code"] for row in cursor.fetchall()]
+
+    # Get watchlist from settings (support both single-user and multi-user mode)
+    import json
+
+    # Single-user mode watchlist
+    cursor.execute("SELECT value FROM settings WHERE key = 'user_watchlist' AND user_id IS NULL")
+    watchlist_row = cursor.fetchone()
+    if watchlist_row and watchlist_row["value"]:
+        try:
+            watchlist_codes = json.loads(watchlist_row["value"])
+            codes.extend(watchlist_codes)
+        except:
+            pass
+
+    # Multi-user mode watchlist
+    cursor.execute("SELECT value FROM user_settings WHERE key = 'user_watchlist'")
+    for row in cursor.fetchall():
+        if row["value"]:
+            try:
+                watchlist_codes = json.loads(row["value"])
+                codes.extend(watchlist_codes)
+            except:
+                pass
+
+    codes = list(set(codes))  # Remove duplicates
 
     if not codes:
         conn.close()
@@ -294,16 +320,20 @@ def start_scheduler():
         # 2. Main loop
         last_cleanup_date = None
         last_nav_update_hour = None
+        last_session_cleanup_hour = None  # Track session cleanup
 
         while True:
             try:
                 now_cst = datetime.now(CST)
                 today_str = now_cst.strftime("%Y-%m-%d")
 
-                # Get collection interval from settings
+                # Get collection interval from settings (single-user mode: user_id IS NULL)
                 conn = get_db_connection()
                 cursor = conn.cursor()
-                cursor.execute("SELECT value FROM settings WHERE key = 'INTRADAY_COLLECT_INTERVAL'")
+                cursor.execute("""
+                    SELECT value FROM settings
+                    WHERE key = 'INTRADAY_COLLECT_INTERVAL' AND user_id IS NULL
+                """)
                 row = cursor.fetchone()
                 interval_minutes = int(row["value"]) if row and row["value"] else 5
                 conn.close()
@@ -328,6 +358,14 @@ def start_scheduler():
                 if 16 <= now_cst.hour <= 23 and last_nav_update_hour != now_cst.hour:
                     update_holdings_nav()
                     last_nav_update_hour = now_cst.hour
+
+                # Session cleanup (once per hour to prevent memory leak)
+                if last_session_cleanup_hour != now_cst.hour:
+                    from ..auth import cleanup_expired_sessions
+                    cleaned = cleanup_expired_sessions()
+                    if cleaned > 0:
+                        logger.info(f"Cleaned up {cleaned} expired sessions")
+                    last_session_cleanup_hour = now_cst.hour
 
             except Exception as e:
                 logger.error(f"Scheduler loop error: {e}")

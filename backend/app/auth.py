@@ -73,7 +73,7 @@ def _get_setting_bool(key: str, default: bool = False) -> bool:
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        cursor.execute("SELECT value FROM settings WHERE key = ? AND user_id IS NULL", (key,))
         row = cursor.fetchone()
         if row is None:
             return default
@@ -153,6 +153,18 @@ def get_session_user(session_id: str) -> Optional[int]:
     session['expiry'] = datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)
 
     return session['user_id']
+
+
+def cleanup_expired_sessions():
+    """
+    清理所有过期的 session（防止内存泄漏）
+    应该由后台任务定期调用
+    """
+    now = datetime.now()
+    expired_keys = [sid for sid, data in _sessions.items() if now > data['expiry']]
+    for sid in expired_keys:
+        del _sessions[sid]
+    return len(expired_keys)
 
 
 def delete_session(session_id: str):

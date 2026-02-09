@@ -26,12 +26,14 @@ def send_email(to_email: str, subject: str, content: str, is_html: bool = False)
 
     try:
         server = smtplib.SMTP(Config.SMTP_HOST, Config.SMTP_PORT)
-        server.starttls()
-        server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
-        server.send_message(msg)
-        server.quit()
-        logger.info(f"Email sent to {to_email}")
-        return True
+        try:
+            server.starttls()
+            server.login(Config.SMTP_USER, Config.SMTP_PASSWORD)
+            server.send_message(msg)
+            logger.info(f"Email sent to {to_email}")
+            return True
+        finally:
+            server.quit()  # Ensure connection is closed even if error occurs
     except Exception as e:
         logger.error(f"Failed to send email to {to_email}: {e}")
         return False

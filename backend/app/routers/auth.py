@@ -122,7 +122,7 @@ def get_registration_enabled():
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT value FROM settings WHERE key = 'allow_registration'"
+            "SELECT value FROM settings WHERE key = 'allow_registration' AND user_id IS NULL"
         )
         row = cursor.fetchone()
         enabled = row and row[0] == '1'
@@ -258,7 +258,7 @@ def register(request: LoginRequest, response: Response):
     conn = get_db_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT value FROM settings WHERE key = 'allow_registration'")
+        cursor.execute("SELECT value FROM settings WHERE key = 'allow_registration' AND user_id IS NULL")
         row = cursor.fetchone()
         allow_registration = row and row[0] == '1'
 
@@ -624,7 +624,7 @@ def get_allow_registration(admin: User = Depends(require_admin)):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT value FROM settings WHERE key = 'allow_registration'"
+            "SELECT value FROM settings WHERE key = 'allow_registration' AND user_id IS NULL"
         )
         row = cursor.fetchone()
         allow = row[0] == '1' if row else False
@@ -712,10 +712,10 @@ def enable_multi_user(request: EnableMultiUserRequest):
         """, (admin_user_id,))
 
         # 4. 迁移数据：复制 settings → user_settings (user_id=admin_user_id)
-        # 获取所有用户级配置（排除系统级配置）
+        # 获取所有用户级配置（排除系统级配置，只迁移 user_id IS NULL 的）
         cursor.execute("""
             SELECT key, value, encrypted FROM settings
-            WHERE key NOT IN ('multi_user_mode', 'allow_registration')
+            WHERE user_id IS NULL AND key NOT IN ('multi_user_mode', 'allow_registration')
         """)
         settings_rows = cursor.fetchall()
 

@@ -29,7 +29,7 @@ def _load_settings_from_db():
 
         conn = sqlite3.connect(db_path, timeout=5.0)
         cursor = conn.cursor()
-        cursor.execute("SELECT key, value, encrypted FROM settings")
+        cursor.execute("SELECT key, value, encrypted FROM settings WHERE user_id IS NULL")
         rows = cursor.fetchall()
         conn.close()
 

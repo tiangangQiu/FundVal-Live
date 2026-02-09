@@ -39,8 +39,8 @@ def get_settings(current_user: Optional[User] = Depends(get_current_user)):
         cursor = conn.cursor()
 
         if user_id is None:
-            # 单用户模式：从 settings 表读取
-            cursor.execute("SELECT key, value, encrypted FROM settings WHERE key NOT IN ('multi_user_mode', 'allow_registration')")
+            # 单用户模式：从 settings 表读取（user_id IS NULL）
+            cursor.execute("SELECT key, value, encrypted FROM settings WHERE user_id IS NULL AND key NOT IN ('multi_user_mode', 'allow_registration')")
         else:
             # 多用户模式：从 user_settings 表读取
             cursor.execute("SELECT key, value, encrypted FROM user_settings WHERE user_id = ?", (user_id,))
@@ -123,11 +123,11 @@ def update_settings(data: dict = Body(...), current_user: Optional[User] = Depen
                 value = encrypt_value(value)
 
             if user_id is None:
-                # 单用户模式：更新 settings 表
+                # 单用户模式：更新 settings 表（user_id = NULL）
                 cursor.execute("""
-                    INSERT INTO settings (key, value, encrypted, updated_at)
-                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                    ON CONFLICT(key) DO UPDATE SET
+                    INSERT INTO settings (key, value, encrypted, user_id, updated_at)
+                    VALUES (?, ?, ?, NULL, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key, user_id) DO UPDATE SET
                         value = excluded.value,
                         encrypted = excluded.encrypted,
                         updated_at = CURRENT_TIMESTAMP
@@ -166,19 +166,19 @@ def get_preferences(current_user: Optional[User] = Depends(get_current_user)):
         cursor = conn.cursor()
 
         if user_id is None:
-            # 单用户模式：从 settings 表读取
+            # 单用户模式：从 settings 表读取（user_id IS NULL）
             # 获取自选列表
-            cursor.execute("SELECT value FROM settings WHERE key = 'user_watchlist'")
+            cursor.execute("SELECT value FROM settings WHERE key = 'user_watchlist' AND user_id IS NULL")
             watchlist_row = cursor.fetchone()
             watchlist = watchlist_row["value"] if watchlist_row else "[]"
 
             # 获取当前账户
-            cursor.execute("SELECT value FROM settings WHERE key = 'user_current_account'")
+            cursor.execute("SELECT value FROM settings WHERE key = 'user_current_account' AND user_id IS NULL")
             account_row = cursor.fetchone()
             current_account = int(account_row["value"]) if account_row else 1
 
             # 获取排序选项
-            cursor.execute("SELECT value FROM settings WHERE key = 'user_sort_option'")
+            cursor.execute("SELECT value FROM settings WHERE key = 'user_sort_option' AND user_id IS NULL")
             sort_row = cursor.fetchone()
             sort_option = sort_row["value"] if sort_row else None
         else:
@@ -220,30 +220,30 @@ def update_preferences(data: dict = Body(...), current_user: Optional[User] = De
         cursor = conn.cursor()
 
         if user_id is None:
-            # 单用户模式：更新 settings 表
+            # 单用户模式：更新 settings 表（user_id = NULL）
             if "watchlist" in data:
                 cursor.execute("""
-                    INSERT INTO settings (key, value, encrypted, updated_at)
-                    VALUES ('user_watchlist', ?, 0, CURRENT_TIMESTAMP)
-                    ON CONFLICT(key) DO UPDATE SET
+                    INSERT INTO settings (key, value, encrypted, user_id, updated_at)
+                    VALUES ('user_watchlist', ?, 0, NULL, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key, user_id) DO UPDATE SET
                         value = excluded.value,
                         updated_at = CURRENT_TIMESTAMP
                 """, (data["watchlist"],))
 
             if "currentAccount" in data:
                 cursor.execute("""
-                    INSERT INTO settings (key, value, encrypted, updated_at)
-                    VALUES ('user_current_account', ?, 0, CURRENT_TIMESTAMP)
-                    ON CONFLICT(key) DO UPDATE SET
+                    INSERT INTO settings (key, value, encrypted, user_id, updated_at)
+                    VALUES ('user_current_account', ?, 0, NULL, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key, user_id) DO UPDATE SET
                         value = excluded.value,
                         updated_at = CURRENT_TIMESTAMP
                 """, (str(data["currentAccount"]),))
 
             if "sortOption" in data:
                 cursor.execute("""
-                    INSERT INTO settings (key, value, encrypted, updated_at)
-                    VALUES ('user_sort_option', ?, 0, CURRENT_TIMESTAMP)
-                    ON CONFLICT(key) DO UPDATE SET
+                    INSERT INTO settings (key, value, encrypted, user_id, updated_at)
+                    VALUES ('user_sort_option', ?, 0, NULL, CURRENT_TIMESTAMP)
+                    ON CONFLICT(key, user_id) DO UPDATE SET
                         value = excluded.value,
                         updated_at = CURRENT_TIMESTAMP
                 """, (data["sortOption"],))

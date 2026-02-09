@@ -9,6 +9,9 @@ import { getDefaultTradeDate, buildTradeTime } from '../utils/date';
 export function PositionModal({ isOpen, onClose, onSubmit, editingPos, submitting, onOpenAdd, onOpenReduce, currentAccount }) {
   const [formData, setFormData] = useState({ code: '', cost: '', shares: '' });
   const [showTransactions, setShowTransactions] = useState(false);
+  const [inputMode, setInputMode] = useState('manual'); // 'manual' | 'profit'
+  const [profitData, setProfitData] = useState({ invest: '', profit: '', currentNav: '' });
+  const [fetchingNav, setFetchingNav] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -18,12 +21,58 @@ export function PositionModal({ isOpen, onClose, onSubmit, editingPos, submittin
         setFormData({ code: '', cost: '', shares: '' });
       }
       setShowTransactions(false);
+      setInputMode('manual');
+      setProfitData({ invest: '', profit: '', currentNav: '' });
     }
   }, [isOpen, editingPos]);
 
+  // Fetch current NAV when code changes in profit mode
+  useEffect(() => {
+    if (inputMode === 'profit' && formData.code && formData.code.length === 6) {
+      fetchCurrentNav(formData.code);
+    }
+  }, [formData.code, inputMode]);
+
+  const fetchCurrentNav = async (code) => {
+    setFetchingNav(true);
+    try {
+      const response = await fetch(`/api/fund/${code}`);
+      if (response.ok) {
+        const data = await response.json();
+        const nav = data.estimate || data.nav || '';
+        setProfitData(prev => ({ ...prev, currentNav: nav }));
+      }
+    } catch (e) {
+      console.error('Failed to fetch NAV', e);
+    } finally {
+      setFetchingNav(false);
+    }
+  };
+
+  // Calculate shares and cost from profit data
+  const calculateFromProfit = () => {
+    const invest = parseFloat(profitData.invest);
+    const profit = parseFloat(profitData.profit);
+    const nav = parseFloat(profitData.currentNav);
+
+    if (!invest || !nav) return null;
+
+    const currentValue = invest + (profit || 0);
+    const shares = currentValue / nav;
+    const cost = invest / shares;
+
+    return { shares: shares.toFixed(4), cost: cost.toFixed(4) };
+  };
+
+  const calculated = inputMode === 'profit' ? calculateFromProfit() : null;
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSubmit(formData);
+    if (inputMode === 'profit' && calculated) {
+      onSubmit({ ...formData, shares: calculated.shares, cost: calculated.cost });
+    } else {
+      onSubmit(formData);
+    }
   };
 
   if (!isOpen) return null;
@@ -55,35 +104,113 @@ export function PositionModal({ isOpen, onClose, onSubmit, editingPos, submittin
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">持有份额</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={formData.shares}
-                  onChange={(e) => setFormData({ ...formData, shares: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                  required
-                />
+            {!editingPos && (
+              <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setInputMode('manual')}
+                  className={`flex-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    inputMode === 'manual'
+                      ? 'bg-white text-slate-700 font-medium shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  手动输入
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInputMode('profit')}
+                  className={`flex-1 px-3 py-1.5 text-xs rounded-md transition-colors ${
+                    inputMode === 'profit'
+                      ? 'bg-white text-slate-700 font-medium shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  金额+收益
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">持仓成本(单价)</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={formData.cost}
-                  onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                  required
-                />
+            )}
+
+            {inputMode === 'manual' ? (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">持有份额</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.shares}
+                    onChange={(e) => setFormData({ ...formData, shares: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">持仓成本(单价)</label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={formData.cost}
+                    onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                    required
+                  />
+                </div>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">总投入金额</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={profitData.invest}
+                      onChange={(e) => setProfitData({ ...profitData, invest: e.target.value })}
+                      placeholder="10000"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">当前收益</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={profitData.profit}
+                      onChange={(e) => setProfitData({ ...profitData, profit: e.target.value })}
+                      placeholder="500 或 -200"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">
+                    当前净值 {fetchingNav && <span className="text-xs text-blue-500">(获取中...)</span>}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={profitData.currentNav}
+                    onChange={(e) => setProfitData({ ...profitData, currentNav: e.target.value })}
+                    placeholder="自动获取或手动输入"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                    required
+                  />
+                </div>
+                {calculated && (
+                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm space-y-1">
+                    <div className="font-medium text-blue-900">计算结果：</div>
+                    <div className="text-slate-700">持有份额: <span className="font-mono font-bold">{calculated.shares}</span></div>
+                    <div className="text-slate-700">持仓成本: <span className="font-mono font-bold">{calculated.cost}</span></div>
+                  </div>
+                )}
+              </>
+            )}
 
             <div className="pt-2">
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || (inputMode === 'profit' && !calculated)}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {submitting ? '保存中...' : '保存'}

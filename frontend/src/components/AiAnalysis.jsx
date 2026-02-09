@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bot, Sparkles, AlertTriangle, TrendingUp, TrendingDown, RefreshCcw } from 'lucide-react';
 import { api, getPrompts } from '../services/api';
+import ReactMarkdown from 'react-markdown';
 
 export const AiAnalysis = ({ fund }) => {
   const [analysis, setAnalysis] = useState(null);
@@ -35,9 +36,11 @@ export const AiAnalysis = ({ fund }) => {
         fund_info: fund,
         prompt_id: selectedPromptId
       });
+      console.log('AI Analysis Response:', response.data);
       setAnalysis(response.data);
     } catch (err) {
       const errorMsg = err.response?.data?.detail || err.message || '分析请求失败，请稍后重试';
+      console.error('AI Analysis Error:', err);
       setError(errorMsg);
     } finally {
       setLoading(false);
@@ -49,6 +52,13 @@ export const AiAnalysis = ({ fund }) => {
     if (level.includes('高')) return 'text-red-600 bg-red-50 border-red-100';
     if (level.includes('中')) return 'text-orange-600 bg-orange-50 border-orange-100';
     return 'text-green-600 bg-green-50 border-green-100';
+  };
+
+  // Extract risk level from markdown (look for ##  风险等级 section)
+  const extractRiskLevel = (markdown) => {
+    if (!markdown) return null;
+    const match = markdown.match(/##\s*\s*风险等级\s*\n([^\n]+)/);
+    return match ? match[1].trim() : null;
   };
 
   if (!analysis && !loading) {
@@ -111,17 +121,19 @@ export const AiAnalysis = ({ fund }) => {
           <div>
             <h3 className="font-bold text-slate-800">AI 分析报告</h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              生成时间: {analysis?.timestamp || '--:--'} · 
+              生成时间: {analysis?.timestamp || '--:--'} ·
               <span className="ml-1 text-indigo-600 font-mono">Linus Mode</span>
             </p>
           </div>
         </div>
-        
+
         {analysis?.indicators && (
             <div className="flex gap-2">
-                <span className={`px-2.5 py-1 rounded text-xs font-bold border ${getRiskColor(analysis.risk_level)}`}>
-                    风险: {analysis.risk_level || '评估中'}
-                </span>
+                {extractRiskLevel(analysis.markdown) && (
+                  <span className={`px-2.5 py-1 rounded text-xs font-bold border ${getRiskColor(extractRiskLevel(analysis.markdown))}`}>
+                      {extractRiskLevel(analysis.markdown)}
+                  </span>
+                )}
                 <span className={`px-2.5 py-1 rounded text-xs font-bold border bg-slate-50 text-slate-600 border-slate-200`}>
                     位置: {analysis.indicators.status}
                 </span>
@@ -137,24 +149,17 @@ export const AiAnalysis = ({ fund }) => {
         </div>
       )}
 
-      {/* Main Content */}
-      {analysis && (
-        <div className="space-y-4">
-          <div className="prose prose-sm max-w-none text-slate-700 leading-relaxed whitespace-pre-line">
-            {analysis.analysis_report}
-          </div>
-          
-          {/* Summary Box */}
-          <div className="mt-6 p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-            <h4 className="text-indigo-900 font-bold text-sm mb-2 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4" /> 核心结论
-            </h4>
-            <p className="text-indigo-800 text-sm font-medium">
-                {analysis.summary}
-            </p>
-          </div>
+      {/* Main Content - Markdown */}
+      {analysis?.markdown ? (
+        <div className="prose prose-sm max-w-none text-slate-700">
+          <ReactMarkdown>{analysis.markdown}</ReactMarkdown>
         </div>
-      )}
+      ) : analysis ? (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+          ⚠️ AI 返回数据格式错误：缺少 markdown 字段
+          <pre className="mt-2 text-xs overflow-auto">{JSON.stringify(analysis, null, 2)}</pre>
+        </div>
+      ) : null}
       
       {!loading && analysis && (
         <div className="mt-6 flex justify-center">

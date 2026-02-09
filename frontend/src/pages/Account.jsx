@@ -28,6 +28,7 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
 
   // UI 状态
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('全部');
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPos, setEditingPos] = useState(null);
   const [addModalPos, setAddModalPos] = useState(null);
@@ -40,7 +41,22 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
 
   const { summary, positions } = data;
   const displayPositions = positions || [];
-  const sortedPositions = sortPositions(displayPositions);
+
+  // 分类筛选
+  const CATEGORIES = ['全部', '货币类', '偏债类', '偏股类', '商品类', '未分类'];
+
+  const categoryCounts = CATEGORIES.reduce((acc, cat) => {
+    acc[cat] = cat === '全部'
+      ? displayPositions.length
+      : displayPositions.filter(p => p.category === cat).length;
+    return acc;
+  }, {});
+
+  const filteredPositions = selectedCategory === '全部'
+    ? displayPositions
+    : displayPositions.filter(p => p.category === selectedCategory);
+
+  const sortedPositions = sortPositions(filteredPositions);
 
   // Modal 操作
   const handleOpenModal = (pos = null) => {
@@ -128,68 +144,88 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
       )}
 
       {/* Actions */}
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-bold text-slate-800">
-          {isAggregatedView ? '全部账户持仓汇总' : '持仓明细'}
-        </h2>
-        <div className="flex gap-2">
-          {/* 排序下拉菜单 */}
-          <div className="relative" ref={sortDropdownRef}>
-            <button
-              onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
-              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium"
-            >
-              <ArrowUpDown className="w-4 h-4" />
-              排序
-              <ChevronDown className={`w-3 h-3 transition-transform ${sortDropdownOpen ? 'rotate-180' : ''}`} />
-            </button>
+      <div className="space-y-4">
+        {/* 第一行：标题 + 操作按钮 */}
+        <div className="flex justify-between items-center">
+          <h2 className="text-xl font-bold text-slate-800">
+            {isAggregatedView ? '全部账户持仓汇总' : '持仓明细'}
+          </h2>
+          <div className="flex gap-2">
+            {/* 排序下拉菜单 */}
+            <div className="relative" ref={sortDropdownRef}>
+              <button
+                onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
+                className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+              >
+                <ArrowUpDown className="w-4 h-4" />
+                排序
+                <ChevronDown className={`w-3 h-3 transition-transform ${sortDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            {sortDropdownOpen && (
-              <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
-                {SORT_OPTIONS.map((option, index) => (
-                  <button
-                    key={index}
-                    onClick={() => handleSortChange(option)}
-                    className={`w-full text-left px-4 py-2 text-sm transition-colors ${
-                      sortOption.label === option.label
-                        ? 'bg-blue-50 text-blue-600 font-medium'
-                        : 'text-slate-700 hover:bg-slate-50'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              {sortDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-200 rounded-lg shadow-lg z-50 py-1">
+                  {SORT_OPTIONS.map((option, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleSortChange(option)}
+                      className={`w-full text-left px-4 py-2 text-sm transition-colors ${
+                        sortOption.label === option.label
+                          ? 'bg-blue-50 text-blue-600 font-medium'
+                          : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={handleSync}
+              disabled={syncLoading || positionSyncLoading}
+              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title="将持仓基金添加到关注列表"
+            >
+              <RefreshCw className={`w-4 h-4 ${(syncLoading || positionSyncLoading) ? 'animate-spin' : ''}`} />
+              {(syncLoading || positionSyncLoading) ? '同步中...' : '同步关注'}
+            </button>
+            <button
+              onClick={handleUpdateNav}
+              disabled={navUpdating}
+              className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-green-600 hover:border-green-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title="手动更新所有持仓基金的净值"
+            >
+              <Download className={`w-4 h-4 ${navUpdating ? 'animate-spin' : ''}`} />
+              {navUpdating ? '更新中...' : '更新净值'}
+            </button>
+            {!isAggregatedView && (
+              <button
+                onClick={() => handleOpenModal()}
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+              >
+                <Plus className="w-4 h-4" />
+                记一笔
+              </button>
             )}
           </div>
+        </div>
 
-          <button
-            onClick={handleSync}
-            disabled={syncLoading || positionSyncLoading}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-blue-600 hover:border-blue-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            title="将持仓基金添加到关注列表"
-          >
-            <RefreshCw className={`w-4 h-4 ${(syncLoading || positionSyncLoading) ? 'animate-spin' : ''}`} />
-            {(syncLoading || positionSyncLoading) ? '同步中...' : '同步关注'}
-          </button>
-          <button
-            onClick={handleUpdateNav}
-            disabled={navUpdating}
-            className="flex items-center gap-2 bg-white border border-slate-200 text-slate-600 hover:text-green-600 hover:border-green-200 px-4 py-2 rounded-lg transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            title="手动更新所有持仓基金的净值"
-          >
-            <Download className={`w-4 h-4 ${navUpdating ? 'animate-spin' : ''}`} />
-            {navUpdating ? '更新中...' : '更新净值'}
-          </button>
-          {!isAggregatedView && (
+        {/* 第二行：分类筛选器 */}
+        <div className="flex gap-1 bg-slate-50 p-1 rounded-lg w-fit">
+          {CATEGORIES.map(cat => (
             <button
-              onClick={() => handleOpenModal()}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                selectedCategory === cat
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-600 hover:bg-white hover:text-blue-600'
+              }`}
             >
-              <Plus className="w-4 h-4" />
-              记一笔
+              {cat} ({categoryCounts[cat]})
             </button>
-          )}
+          ))}
         </div>
       </div>
 
@@ -249,28 +285,28 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
                   {/* Accumulated Income */}
                   <td className="px-4 py-3 text-right font-mono">
                     <div className={`font-medium ${getRateColor(pos.accumulated_income)}`}>
-                        {pos.accumulated_income > 0 ? '+' : ''}{pos.accumulated_income}
+                        {pos.accumulated_income > 0 ? '+' : ''}{pos.accumulated_income.toFixed(2)}
                     </div>
                     <div className={`text-xs ${getRateColor(pos.accumulated_return_rate)}`}>
-                        {pos.accumulated_return_rate > 0 ? '+' : ''}{pos.accumulated_return_rate}%
+                        {pos.accumulated_return_rate > 0 ? '+' : ''}{pos.accumulated_return_rate.toFixed(2)}%
                     </div>
                   </td>
 
                   {/* Intraday Income */}
                   <td className="px-4 py-3 text-right font-mono">
                     <div className={`font-medium ${!pos.is_est_valid ? 'text-slate-300' : getRateColor(pos.day_income)}`}>
-                        {pos.is_est_valid ? (pos.day_income > 0 ? '+' : '') + pos.day_income : '--'}
+                        {pos.is_est_valid ? (pos.day_income > 0 ? '+' : '') + pos.day_income.toFixed(2) : '--'}
                     </div>
                     <div className={`text-xs ${!pos.is_est_valid ? 'text-slate-300' : getRateColor(pos.est_rate)}`}>
-                        {pos.is_est_valid ? (pos.est_rate > 0 ? '+' : '') + pos.est_rate + '%' : '--'}
+                        {pos.is_est_valid ? (pos.est_rate > 0 ? '+' : '') + pos.est_rate.toFixed(2) + '%' : '--'}
                     </div>
                   </td>
 
                   {/* 实际总值：净值 × 份额；下方为实际收益（不含当日预估） */}
                   <td className="px-4 py-3 text-right font-mono">
-                     <div className="text-slate-800 font-medium">{(pos.nav_market_value ?? pos.est_market_value).toLocaleString()}</div>
+                     <div className="text-slate-800 font-medium">{(pos.nav_market_value ?? pos.est_market_value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                      <div className={`text-xs ${getRateColor(pos.accumulated_income)}`}>
-                        {pos.accumulated_income > 0 ? '+' : ''}{pos.accumulated_income}
+                        {pos.accumulated_income > 0 ? '+' : ''}{pos.accumulated_income.toFixed(2)}
                      </div>
                   </td>
 
