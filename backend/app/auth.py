@@ -155,6 +155,18 @@ def get_session_user(session_id: str) -> Optional[int]:
     return session['user_id']
 
 
+def cleanup_expired_sessions():
+    """
+    清理所有过期的 session（防止内存泄漏）
+    应该由后台任务定期调用
+    """
+    now = datetime.now()
+    expired_keys = [sid for sid, data in _sessions.items() if now > data['expiry']]
+    for sid in expired_keys:
+        del _sessions[sid]
+    return len(expired_keys)
+
+
 def delete_session(session_id: str):
     """
     删除 session

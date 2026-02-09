@@ -2,6 +2,7 @@ import sqlite3
 import logging
 import os
 from pathlib import Path
+from contextlib import contextmanager
 from .config import Config
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,24 @@ def get_db_connection():
     # Enable WAL mode for better concurrency
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
+
+
+@contextmanager
+def db_connection():
+    """
+    Context manager for database connections to prevent leaks.
+
+    Usage:
+        with db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(...)
+    """
+    conn = get_db_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()
+
 
 def init_db():
     """Initialize the database schema with migration support."""

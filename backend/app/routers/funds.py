@@ -17,22 +17,21 @@ def get_fund_categories():
     Get all unique fund categories from database.
     Returns major categories (simplified) sorted by frequency.
     """
-    from ..db import get_db_connection
+    from ..db import db_connection
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    # Get all unique types with their counts
-    cursor.execute("""
-        SELECT type, COUNT(*) as count
-        FROM funds
-        WHERE type IS NOT NULL AND type != ''
-        GROUP BY type
-        ORDER BY count DESC
-    """)
+        # Get all unique types with their counts
+        cursor.execute("""
+            SELECT type, COUNT(*) as count
+            FROM funds
+            WHERE type IS NOT NULL AND type != ''
+            GROUP BY type
+            ORDER BY count DESC
+        """)
 
-    rows = cursor.fetchall()
-    conn.close()
+        rows = cursor.fetchall()
 
     # Map to major categories
     major_categories = {}
@@ -107,29 +106,28 @@ def fund_history(
             from ..utils import verify_account_ownership
             verify_account_ownership(account_id, current_user)
 
-            from ..db import get_db_connection
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT confirm_date, op_type, confirm_nav, amount_cny, shares_redeemed
-                FROM transactions
-                WHERE code = ? AND account_id = ? AND confirm_nav IS NOT NULL
-                ORDER BY confirm_date ASC
-            """, (fund_id, account_id))
+            from ..db import db_connection
+            with db_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT confirm_date, op_type, confirm_nav, amount_cny, shares_redeemed
+                    FROM transactions
+                    WHERE code = ? AND account_id = ? AND confirm_nav IS NOT NULL
+                    ORDER BY confirm_date ASC
+                """, (fund_id, account_id))
 
-            for row in cursor.fetchall():
-                # Map op_type: "add" -> "buy", "reduce" -> "sell"
-                op_type = row["op_type"]
-                transaction_type = "buy" if op_type == "add" else "sell"
+                for row in cursor.fetchall():
+                    # Map op_type: "add" -> "buy", "reduce" -> "sell"
+                    op_type = row["op_type"]
+                    transaction_type = "buy" if op_type == "add" else "sell"
 
-                transactions.append({
-                    "date": row["confirm_date"],
-                    "type": transaction_type,
-                    "nav": float(row["confirm_nav"]),
-                    "amount": float(row["amount_cny"]) if row["amount_cny"] else None,
-                    "shares": float(row["shares_redeemed"]) if row["shares_redeemed"] else None
-                })
-            conn.close()
+                    transactions.append({
+                        "date": row["confirm_date"],
+                        "type": transaction_type,
+                        "nav": float(row["confirm_nav"]),
+                        "amount": float(row["amount_cny"]) if row["amount_cny"] else None,
+                        "shares": float(row["shares_redeemed"]) if row["shares_redeemed"] else None
+                    })
 
         return {
             "history": history,
@@ -147,39 +145,36 @@ def fund_intraday(fund_id: str, date: str = None):
     Returns today's data by default.
     """
     from datetime import datetime
-    from ..db import get_db_connection
+    from ..db import db_connection
 
     if not date:
         date = datetime.now().strftime("%Y-%m-%d")
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    with db_connection() as conn:
+        cursor = conn.cursor()
 
-    # 0. Check if fund exists
-    cursor.execute("SELECT 1 FROM funds WHERE code = ?", (fund_id,))
-    if not cursor.fetchone():
-        conn.close()
-        raise HTTPException(status_code=404, detail="Fund not found")
+        # 0. Check if fund exists
+        cursor.execute("SELECT 1 FROM funds WHERE code = ?", (fund_id,))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=404, detail="Fund not found")
 
-    # 1. Get previous day NAV
-    cursor.execute("""
-        SELECT nav FROM fund_history
-        WHERE code = ? AND date < ?
-        ORDER BY date DESC
-        LIMIT 1
-    """, (fund_id, date))
-    row = cursor.fetchone()
-    prev_nav = float(row["nav"]) if row else None
+        # 1. Get previous day NAV
+        cursor.execute("""
+            SELECT nav FROM fund_history
+            WHERE code = ? AND date < ?
+            ORDER BY date DESC
+            LIMIT 1
+        """, (fund_id, date))
+        row = cursor.fetchone()
+        prev_nav = float(row["nav"]) if row else None
 
-    # 2. Get intraday snapshots
-    cursor.execute("""
-        SELECT time, estimate FROM fund_intraday_snapshots
-        WHERE fund_code = ? AND date = ?
-        ORDER BY time ASC
-    """, (fund_id, date))
-    snapshots = [{"time": r["time"], "estimate": float(r["estimate"])} for r in cursor.fetchall()]
-
-    conn.close()
+        # 2. Get intraday snapshots
+        cursor.execute("""
+            SELECT time, estimate FROM fund_intraday_snapshots
+            WHERE fund_code = ? AND date = ?
+            ORDER BY time ASC
+        """, (fund_id, date))
+        snapshots = [{"time": r["time"], "estimate": float(r["estimate"])} for r in cursor.fetchall()]
 
     return {
         "date": date,

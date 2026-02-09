@@ -307,6 +307,7 @@ def start_scheduler():
         # 2. Main loop
         last_cleanup_date = None
         last_nav_update_hour = None
+        last_session_cleanup_hour = None  # Track session cleanup
 
         while True:
             try:
@@ -344,6 +345,14 @@ def start_scheduler():
                 if 16 <= now_cst.hour <= 23 and last_nav_update_hour != now_cst.hour:
                     update_holdings_nav()
                     last_nav_update_hour = now_cst.hour
+
+                # Session cleanup (once per hour to prevent memory leak)
+                if last_session_cleanup_hour != now_cst.hour:
+                    from ..auth import cleanup_expired_sessions
+                    cleaned = cleanup_expired_sessions()
+                    if cleaned > 0:
+                        logger.info(f"Cleaned up {cleaned} expired sessions")
+                    last_session_cleanup_hour = now_cst.hour
 
             except Exception as e:
                 logger.error(f"Scheduler loop error: {e}")

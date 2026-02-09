@@ -1,14 +1,46 @@
 import time
 import json
 import re
+import logging
 from typing import List, Dict, Any
 
 import pandas as pd
 import akshare as ak
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from ..db import get_db_connection
 from ..config import Config
+
+logger = logging.getLogger(__name__)
+
+# Global HTTP session with connection pooling and retry strategy
+_http_session = None
+
+def _get_http_session():
+    """
+    Get or create a global HTTP session with connection pooling.
+    This prevents creating new connections for every request.
+    """
+    global _http_session
+    if _http_session is None:
+        _http_session = requests.Session()
+        # Configure retry strategy
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=0.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"]
+        )
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy,
+            pool_connections=10,
+            pool_maxsize=20
+        )
+        _http_session.mount("http://", adapter)
+        _http_session.mount("https://", adapter)
+    return _http_session
 
 
 def get_fund_type(code: str, name: str) -> str:
@@ -102,7 +134,7 @@ def get_eastmoney_valuation(code: str) -> Dict[str, Any]:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36)"
     }
     try:
-        response = requests.get(url, headers=headers, timeout=5)
+        response = _get_http_session().get(url, headers=headers, timeout=5)
         if response.status_code == 200:
             text = response.text
             # Regex to capture JSON content inside jsonpgz(...)
@@ -130,7 +162,7 @@ def get_sina_valuation(code: str) -> Dict[str, Any]:
     url = f"http://hq.sinajs.cn/list=fu_{code}"
     headers = {"Referer": "http://finance.sina.com.cn"}
     try:
-        response = requests.get(url, headers=headers, timeout=5)
+        response = _get_http_session().get(url, headers=headers, timeout=5)
         text = response.text
         # var hq_str_fu_005827="Name,15:00:00,1.234,1.230,...";
         match = re.search(r'="(.*)"', text)
@@ -204,7 +236,7 @@ def get_eastmoney_pingzhong_data(code: str) -> Dict[str, Any]:
     """
     url = Config.EASTMONEY_DETAILED_API_URL.format(code=code)
     try:
-        response = requests.get(url, timeout=5)
+        response = _get_http_session().get(url, timeout=5)
         if response.status_code == 200:
             text = response.text
             data = {}
@@ -324,7 +356,7 @@ def _fetch_stock_spots_sina(codes: List[str]) -> Dict[str, float]:
     headers = {"Referer": "http://finance.sina.com.cn"}
     
     try:
-        response = requests.get(url, headers=headers, timeout=5)
+        response = _get_http_session().get(url, headers=headers, timeout=5)
         results = {}
         for line in response.text.strip().split('\n'):
             if not line or '=' not in line or '"' not in line: continue
