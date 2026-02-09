@@ -204,7 +204,7 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
                 <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">份额 | 成本</th>
                 <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">持有收益</th>
                 <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">当日预估</th>
-                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">预估总值</th>
+                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">实际总值</th>
                 <th className="px-4 py-3 text-center border-b border-slate-100 bg-slate-50 rounded-tr-xl">操作</th>
               </tr>
             </thead>
@@ -266,11 +266,11 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
                     </div>
                   </td>
 
-                  {/* Total Projected */}
+                  {/* 实际总值：净值 × 份额；下方为实际收益（不含当日预估） */}
                   <td className="px-4 py-3 text-right font-mono">
-                     <div className="text-slate-800 font-medium">{pos.est_market_value.toLocaleString()}</div>
-                     <div className={`text-xs ${getRateColor(pos.total_income)}`}>
-                        {pos.total_income > 0 ? '+' : ''}{pos.total_income}
+                     <div className="text-slate-800 font-medium">{(pos.nav_market_value ?? pos.est_market_value).toLocaleString()}</div>
+                     <div className={`text-xs ${getRateColor(pos.accumulated_income)}`}>
+                        {pos.accumulated_income > 0 ? '+' : ''}{pos.accumulated_income}
                      </div>
                   </td>
 

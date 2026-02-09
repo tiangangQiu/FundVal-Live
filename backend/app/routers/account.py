@@ -337,6 +337,7 @@ def get_aggregate_positions(current_user: Optional[User] = Depends(get_current_u
                         "shares": float(row["shares"]),
                         "nav": 0.0,
                         "estimate": 0.0,
+                        "nav_market_value": 0.0,
                         "est_market_value": 0.0,
                         "day_income": 0.0,
                         "total_income": 0.0,
@@ -358,7 +359,7 @@ def get_aggregate_positions(current_user: Optional[User] = Depends(get_current_u
                 "total_income": round(total_income, 2),
                 "total_return_rate": round(total_return_rate, 2)
             },
-            "positions": sorted(positions, key=lambda x: x["est_market_value"], reverse=True)
+            "positions": sorted(positions, key=lambda x: x["nav_market_value"], reverse=True)
         }
     except HTTPException:
         raise

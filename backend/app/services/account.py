@@ -174,6 +174,7 @@ def get_all_positions(account_id: int, user_id: Optional[int] = None) -> Dict[st
                     "shares": float(row["shares"]),
                     "nav": 0.0,
                     "estimate": 0.0,
+                    "nav_market_value": 0.0,
                     "est_market_value": 0.0,
                     "day_income": 0.0,
                     "total_income": 0.0,
@@ -195,7 +196,7 @@ def get_all_positions(account_id: int, user_id: Optional[int] = None) -> Dict[st
             "total_income": round(total_income, 2),
             "total_return_rate": round(total_return_rate, 2)
         },
-        "positions": sorted(positions, key=lambda x: x["est_market_value"], reverse=True)
+        "positions": sorted(positions, key=lambda x: x["nav_market_value"], reverse=True)
     }
 
 def upsert_position(account_id: int, code: str, cost: float, shares: float, user_id: Optional[int] = None):

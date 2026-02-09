@@ -13,8 +13,8 @@ import {
  * 排序选项
  */
 export const SORT_OPTIONS = [
-  { label: '预估总值（从高到低）', key: 'est_market_value', direction: 'desc' },
-  { label: '预估总值（从低到高）', key: 'est_market_value', direction: 'asc' },
+  { label: '实际总值（从高到低）', key: 'nav_market_value', direction: 'desc' },
+  { label: '实际总值（从低到高）', key: 'nav_market_value', direction: 'asc' },
   { label: '持有收益（从高到低）', key: 'accumulated_income', direction: 'desc' },
   { label: '持有收益（从低到高）', key: 'accumulated_income', direction: 'asc' },
   { label: '持有收益率（从高到低）', key: 'accumulated_return_rate', direction: 'desc' },
