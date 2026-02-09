@@ -36,9 +36,11 @@ export const AiAnalysis = ({ fund }) => {
         fund_info: fund,
         prompt_id: selectedPromptId
       });
+      console.log('AI Analysis Response:', response.data);
       setAnalysis(response.data);
     } catch (err) {
       const errorMsg = err.response?.data?.detail || err.message || '分析请求失败，请稍后重试';
+      console.error('AI Analysis Error:', err);
       setError(errorMsg);
     } finally {
       setLoading(false);
@@ -148,11 +150,16 @@ export const AiAnalysis = ({ fund }) => {
       )}
 
       {/* Main Content - Markdown */}
-      {analysis?.markdown && (
+      {analysis?.markdown ? (
         <div className="prose prose-sm max-w-none text-slate-700">
           <ReactMarkdown>{analysis.markdown}</ReactMarkdown>
         </div>
-      )}
+      ) : analysis ? (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+          ⚠️ AI 返回数据格式错误：缺少 markdown 字段
+          <pre className="mt-2 text-xs overflow-auto">{JSON.stringify(analysis, null, 2)}</pre>
+        </div>
+      ) : null}
       
       {!loading && analysis && (
         <div className="mt-6 flex justify-center">

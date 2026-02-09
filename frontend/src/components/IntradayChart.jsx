@@ -59,6 +59,15 @@ export const IntradayChart = ({ fundId }) => {
     estRate: data.prevNav ? parseFloat(((s.estimate - data.prevNav) / data.prevNav * 100).toFixed(2)) : 0
   }));
 
+  console.log('IntradayChart debug:', {
+    displayMode,
+    hasPrevNav: !!data.prevNav,
+    prevNav: data.prevNav,
+    snapshotsCount: data.snapshots.length,
+    firstEstRate: chartData[0]?.estRate,
+    lastEstRate: chartData[chartData.length - 1]?.estRate
+  });
+
   const lastEstimate = chartData[chartData.length - 1]?.estimate || 0;
   const lastRate = chartData[chartData.length - 1]?.estRate || 0;
 
@@ -68,6 +77,13 @@ export const IntradayChart = ({ fundId }) => {
 
   return (
     <div className="w-full">
+      {/* Warning if no prevNav */}
+      {!data.prevNav && (
+        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+          ⚠️ 缺少前日净值数据，无法计算涨跌幅百分比
+        </div>
+      )}
+
       <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
         <div className="text-sm text-slate-600">
           <span>日期: {data.date}</span>
