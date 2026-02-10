@@ -6,6 +6,14 @@ from pathlib import Path
 from contextlib import contextmanager
 from .config import Config
 
+# PostgreSQL support
+try:
+    import psycopg2
+    import psycopg2.extras
+    PSYCOPG2_AVAILABLE = True
+except ImportError:
+    PSYCOPG2_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # Current database schema version (after rebuild)
@@ -26,31 +34,62 @@ def get_db_type() -> str:
 
 
 def get_db_connection():
+    """
+    Get database connection based on DB_TYPE configuration.
+
+    Supports both SQLite and PostgreSQL with thread-local connection pooling.
+
+    Returns:
+        Connection object (sqlite3.Connection or psycopg2.connection)
+    """
     # Reuse connection within same thread to reduce lock contention
     if hasattr(_thread_local, 'conn') and _thread_local.conn:
         try:
             # Test if connection is still alive
-            _thread_local.conn.execute("SELECT 1")
+            cursor = _thread_local.conn.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
             return _thread_local.conn
         except:
             # Connection is dead, create new one
             _thread_local.conn = None
 
-    # 确保数据库目录存在
-    db_dir = Path(Config.DB_PATH).parent
-    db_dir.mkdir(parents=True, exist_ok=True)
+    db_type = get_db_type()
 
-    conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False, timeout=30.0)
-    conn.row_factory = sqlite3.Row
+    if db_type == "postgresql":
+        # PostgreSQL connection
+        if not PSYCOPG2_AVAILABLE:
+            raise RuntimeError("psycopg2 is not installed. Run: pip install psycopg2-binary")
 
-    # Performance optimizations for concurrent access
-    # WAL mode is persistent, only needs to be set once (already enabled)
-    # But we set it here to ensure it's enabled even if DB is recreated
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes, still safe with WAL
-    conn.execute("PRAGMA cache_size=-64000")   # 64MB cache
-    conn.execute("PRAGMA temp_store=MEMORY")   # Use memory for temp tables
-    conn.execute("PRAGMA busy_timeout=30000")  # 30s timeout for lock contention
+        if not Config.DB_URL:
+            raise RuntimeError("DATABASE_URL is not configured for PostgreSQL")
+
+        conn = psycopg2.connect(
+            Config.DB_URL,
+            cursor_factory=psycopg2.extras.RealDictCursor
+        )
+        # PostgreSQL uses autocommit=False by default, which is what we want
+
+    else:
+        # SQLite connection
+        if not Config.DB_PATH:
+            raise RuntimeError("DB_PATH is not configured for SQLite")
+
+        # 确保数据库目录存在
+        db_dir = Path(Config.DB_PATH).parent
+        db_dir.mkdir(parents=True, exist_ok=True)
+
+        conn = sqlite3.connect(Config.DB_PATH, check_same_thread=False, timeout=30.0)
+        conn.row_factory = sqlite3.Row
+
+        # Performance optimizations for concurrent access
+        # WAL mode is persistent, only needs to be set once (already enabled)
+        # But we set it here to ensure it's enabled even if DB is recreated
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")  # Faster writes, still safe with WAL
+        conn.execute("PRAGMA cache_size=-64000")   # 64MB cache
+        conn.execute("PRAGMA temp_store=MEMORY")   # Use memory for temp tables
+        conn.execute("PRAGMA busy_timeout=30000")  # 30s timeout for lock contention
 
     _thread_local.conn = conn
     return conn
