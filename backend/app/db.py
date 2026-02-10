@@ -68,12 +68,77 @@ def db_connection():
         raise
 
 
+def check_database_version() -> int:
+    """
+    Check the current database schema version.
+
+    Returns:
+        int: Current schema version (0 if not initialized or schema_version table doesn't exist)
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # Check if schema_version table exists
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='schema_version'
+        """)
+        if not cursor.fetchone():
+            return 0
+
+        # Get current version
+        cursor.execute("SELECT MAX(version) FROM schema_version")
+        result = cursor.fetchone()
+        return result[0] if result and result[0] is not None else 0
+    except Exception as e:
+        logger.error(f"Error checking database version: {e}")
+        return 0
+
+
+def get_all_tables() -> list[str]:
+    """
+    Get all table names in the database (excluding SQLite internal tables).
+
+    Returns:
+        list[str]: List of table names
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT name FROM sqlite_master
+        WHERE type='table' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+    """)
+    return [row[0] for row in cursor.fetchall()]
+
+
+def drop_all_tables() -> None:
+    """
+    Drop all tables in the database (including schema_version).
+
+    WARNING: This will delete all data!
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    tables = get_all_tables()
+
+    for table in tables:
+        cursor.execute(f"DROP TABLE IF EXISTS {table}")
+        logger.info(f"Dropped table: {table}")
+
+    conn.commit()
+    logger.info(f"Dropped {len(tables)} tables")
+
+
 def init_db():
     """Initialize the database schema. Drops all tables if version mismatch."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
-    # Check database version
+    # Ensure schema_version table exists
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS schema_version (
             version INTEGER PRIMARY KEY,
@@ -81,23 +146,14 @@ def init_db():
         )
     """)
 
-    cursor.execute("SELECT MAX(version) FROM schema_version")
-    current_version = cursor.fetchone()[0] or 0
-
+    current_version = check_database_version()
     logger.info(f"Current database schema version: {current_version}")
 
     # If version mismatch, drop all tables and rebuild
     if current_version > 0 and current_version != CURRENT_SCHEMA_VERSION:
         logger.warning(f"Database schema version mismatch (current: {current_version}, expected: {CURRENT_SCHEMA_VERSION}). Dropping all tables and rebuilding...")
 
-        # Get all tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-        tables = cursor.fetchall()
-
-        # Drop all tables
-        for table in tables:
-            cursor.execute(f"DROP TABLE IF EXISTS {table[0]}")
-            logger.info(f"Dropped table: {table[0]}")
+        drop_all_tables()
 
         # Recreate schema_version table
         cursor.execute("""
