@@ -134,7 +134,7 @@ def drop_all_tables() -> None:
 
 
 def init_db():
-    """Initialize the database schema. Drops all tables if version mismatch."""
+    """Initialize the database schema for multi-user mode. Drops all tables if version mismatch."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -166,7 +166,42 @@ def init_db():
         current_version = 0
         logger.info("All tables dropped. Rebuilding database...")
 
-    # Funds table - simplistic design, exactly what we need
+    # ============================================================================
+    # Multi-user tables
+    # ============================================================================
+
+    # Users table - store user accounts
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            is_admin INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+
+    # Accounts table - store fund accounts (multi-account support)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            user_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(name, user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_accounts_user_id ON accounts(user_id)")
+
+    # ============================================================================
+    # Fund data tables
+    # ============================================================================
+
+    # Funds table - store fund basic info
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS funds (
             code TEXT PRIMARY KEY,
@@ -175,71 +210,27 @@ def init_db():
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_funds_name ON funds(name)")
 
-    # Create an index for searching names, it's cheap and speeds up "LIKE" queries
-    cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_funds_name ON funds(name);
-    """)
-
-    # Positions table - store user holdings
+    # Positions table - store user holdings (per account)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS positions (
-            code TEXT PRIMARY KEY,
+            account_id INTEGER NOT NULL,
+            code TEXT NOT NULL,
             cost REAL NOT NULL DEFAULT 0.0,
             shares REAL NOT NULL DEFAULT 0.0,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (account_id, code),
+            FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
         )
     """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_positions_account_id ON positions(account_id)")
 
-    # Subscriptions table - store email alert settings
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS subscriptions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            code TEXT NOT NULL,
-            email TEXT NOT NULL,
-            threshold_up REAL,
-            threshold_down REAL,
-            enable_digest INTEGER DEFAULT 0,
-            digest_time TEXT DEFAULT '14:45',
-            enable_volatility INTEGER DEFAULT 1,
-            last_notified_at TIMESTAMP,
-            last_digest_at TIMESTAMP,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(code, email)
-        )
-    """)
-
-    # Settings table - store user configuration (for client/desktop)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT,
-            encrypted INTEGER DEFAULT 0,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-
-    # 初始化默认配置（如果不存在）
-    default_settings = [
-        ('OPENAI_API_KEY', '', 1),
-        ('OPENAI_API_BASE', 'https://api.openai.com/v1', 0),
-        ('AI_MODEL_NAME', 'gpt-3.5-turbo', 0),
-        ('SMTP_HOST', 'smtp.gmail.com', 0),
-        ('SMTP_PORT', '587', 0),
-        ('SMTP_USER', '', 0),
-        ('SMTP_PASSWORD', '', 1),
-        ('EMAIL_FROM', 'noreply@fundval.live', 0),
-        ('INTRADAY_COLLECT_INTERVAL', '5', 0),  # 分时数据采集间隔（分钟）
-    ]
-
-    cursor.executemany("""
-        INSERT OR IGNORE INTO settings (key, value, encrypted) VALUES (?, ?, ?)
-    """, default_settings)
-
-    # Transactions table - add/reduce position log (T+1 confirm by real NAV)
+    # Transactions table - add/reduce position log (per account)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
             code TEXT NOT NULL,
             op_type TEXT NOT NULL,
             amount_cny REAL,
@@ -249,13 +240,15 @@ def init_db():
             shares_added REAL,
             cost_after REAL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            applied_at TIMESTAMP
+            applied_at TIMESTAMP,
+            FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
         )
     """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_confirm_date ON transactions(confirm_date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_code ON transactions(code)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_transactions_confirm_date ON transactions(confirm_date)")
 
-    # Fund history table - cache historical NAV data
+    # Fund history table - cache historical NAV data (shared across users)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS fund_history (
             code TEXT NOT NULL,
@@ -265,10 +258,10 @@ def init_db():
             PRIMARY KEY (code, date)
         )
     """)
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fund_history_code ON fund_history(code);")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fund_history_date ON fund_history(date);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fund_history_code ON fund_history(code)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_fund_history_date ON fund_history(date)")
 
-    # Intraday snapshots table - store intraday valuation data for charts
+    # Intraday snapshots table - store intraday valuation data (shared across users)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS fund_intraday_snapshots (
             fund_code TEXT NOT NULL,
@@ -279,12 +272,116 @@ def init_db():
         )
     """)
 
-    # Set schema version (all migrations removed, clean slate)
+    # ============================================================================
+    # User-specific tables
+    # ============================================================================
+
+    # Subscriptions table - store email alert settings (per user)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL,
+            email TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            threshold_up REAL,
+            threshold_down REAL,
+            enable_digest INTEGER DEFAULT 0,
+            digest_time TEXT DEFAULT '14:45',
+            enable_volatility INTEGER DEFAULT 1,
+            last_notified_at TIMESTAMP,
+            last_digest_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(code, email, user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id ON subscriptions(user_id)")
+
+    # Settings table - store configuration (system-level: user_id=NULL, user-level: user_id=<id>)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT NOT NULL,
+            value TEXT,
+            encrypted INTEGER DEFAULT 0,
+            user_id INTEGER,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (key, user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_settings_user_id ON settings(user_id)")
+
+    # Initialize default system settings (user_id = NULL)
+    default_settings = [
+        ('OPENAI_API_KEY', '', 1, None),
+        ('OPENAI_API_BASE', 'https://api.openai.com/v1', 0, None),
+        ('AI_MODEL_NAME', 'gpt-3.5-turbo', 0, None),
+        ('SMTP_HOST', 'smtp.gmail.com', 0, None),
+        ('SMTP_PORT', '587', 0, None),
+        ('SMTP_USER', '', 0, None),
+        ('SMTP_PASSWORD', '', 1, None),
+        ('EMAIL_FROM', 'noreply@fundval.live', 0, None),
+        ('INTRADAY_COLLECT_INTERVAL', '5', 0, None),
+    ]
+
+    cursor.executemany("""
+        INSERT OR IGNORE INTO settings (key, value, encrypted, user_id) VALUES (?, ?, ?, ?)
+    """, default_settings)
+
+    # AI prompts table - store custom AI prompts (per user)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ai_prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(name, user_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_ai_prompts_user_id ON ai_prompts(user_id)")
+
+    # AI analysis history table - store AI analysis results (per user)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ai_analysis_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            account_id INTEGER NOT NULL,
+            fund_code TEXT NOT NULL,
+            fund_name TEXT NOT NULL,
+            prompt_id INTEGER,
+            prompt_name TEXT NOT NULL,
+            markdown TEXT NOT NULL,
+            indicators_json TEXT,
+            status TEXT NOT NULL CHECK(status IN ('success', 'failed')) DEFAULT 'success',
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        )
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_analysis_history_main
+        ON ai_analysis_history(user_id, account_id, fund_code, created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_analysis_history_prompt
+        ON ai_analysis_history(user_id, prompt_id, created_at DESC)
+    """)
+    cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_analysis_history_user_id
+        ON ai_analysis_history(user_id, id)
+    """)
+
+    # ============================================================================
+    # Set schema version
+    # ============================================================================
+
     if current_version == 0:
         cursor.execute("INSERT INTO schema_version (version) VALUES (?)", (CURRENT_SCHEMA_VERSION,))
         logger.info(f"Database initialized with schema version {CURRENT_SCHEMA_VERSION}")
-    elif current_version < CURRENT_SCHEMA_VERSION:
-        logger.warning(f"Database schema version {current_version} is outdated. Current version is {CURRENT_SCHEMA_VERSION}. Database rebuild required.")
 
     conn.commit()
     conn.close()
