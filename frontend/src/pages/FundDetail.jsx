@@ -167,7 +167,7 @@ export const FundDetail = ({ fund, onSubscribe, accountId, onNavigate, hasPrev, 
       <IndicatorsCard indicators={fund.indicators} />
 
       {/* 3. AI Analysis Section */}
-      <AiAnalysis fund={fund} />
+      <AiAnalysis fund={{ ...fund, account_id: accountId }} />
 
       {/* 4. Holdings */}
       <HoldingsTable holdings={fund.holdings} />

@@ -161,3 +161,119 @@ def delete_prompt(
     conn.commit()
 
     return {"ok": True}
+
+@router.get("/ai/analysis_history")
+def get_analysis_history(
+    fund_code: str,
+    account_id: int = 1,
+    limit: int = 20,
+    offset: int = 0,
+    prompt_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    获取 AI 分析历史记录列表（不返回 markdown，减少数据量）
+    """
+    user_id = get_user_id_for_query(current_user)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Build query
+    query = """
+        SELECT id, fund_code, fund_name, prompt_name, status, created_at
+        FROM ai_analysis_history
+        WHERE account_id = ? AND fund_code = ?
+    """
+    params = [account_id, fund_code]
+
+    if user_id is None:
+        query += " AND user_id IS NULL"
+    else:
+        query += " AND user_id = ?"
+        params.append(user_id)
+
+    # Add optional filters
+    if prompt_id is not None:
+        query += " AND prompt_id = ?"
+        params.append(prompt_id)
+
+    if date_from:
+        query += " AND created_at >= ?"
+        params.append(date_from)
+
+    if date_to:
+        query += " AND created_at <= ?"
+        params.append(date_to)
+
+    query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    params.extend([limit, offset])
+
+    cursor.execute(query, params)
+    records = [dict(row) for row in cursor.fetchall()]
+
+    return {"records": records}
+
+@router.get("/ai/analysis_history/{history_id}")
+def get_analysis_history_detail(
+    history_id: int,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    获取单条 AI 分析历史记录详情（包含 markdown）
+    """
+    user_id = get_user_id_for_query(current_user)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    if user_id is None:
+        cursor.execute("""
+            SELECT * FROM ai_analysis_history
+            WHERE id = ? AND user_id IS NULL
+        """, (history_id,))
+    else:
+        cursor.execute("""
+            SELECT * FROM ai_analysis_history
+            WHERE id = ? AND user_id = ?
+        """, (history_id, user_id))
+
+    row = cursor.fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="History record not found or access denied")
+
+    return dict(row)
+
+@router.delete("/ai/analysis_history/{history_id}")
+def delete_analysis_history(
+    history_id: int,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """
+    删除 AI 分析历史记录（只能删除自己的）
+    """
+    user_id = get_user_id_for_query(current_user)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Check if record exists and belongs to user
+    if user_id is None:
+        cursor.execute("SELECT id FROM ai_analysis_history WHERE id = ? AND user_id IS NULL", (history_id,))
+    else:
+        cursor.execute("SELECT id FROM ai_analysis_history WHERE id = ? AND user_id = ?", (history_id, user_id))
+
+    if not cursor.fetchone():
+        raise HTTPException(status_code=404, detail="History record not found or access denied")
+
+    try:
+        cursor.execute("DELETE FROM ai_analysis_history WHERE id = ?", (history_id,))
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete record")
+
+    return {"ok": True}

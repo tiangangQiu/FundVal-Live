@@ -65,15 +65,9 @@ jobs:
       - name: Install Electron dependencies
         run: npm ci
 
-      - name: Build Electron app (macOS arm64)
+      - name: Build Electron app (macOS)
         if: runner.os == 'macOS'
-        run: npm run dist -- --arm64
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build Electron app (macOS x64)
-        if: runner.os == 'macOS'
-        run: npm run dist -- --x64
+        run: npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -94,7 +88,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-build
-          path: release/*.dmg
+          path: |
+            release/*.dmg
+            release/latest-mac.yml
           if-no-files-found: error
 
       - name: Upload artifacts (Windows)
@@ -102,7 +98,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-build
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/latest.yml
 
       - name: Upload artifacts (Linux)
         if: runner.os == 'Linux'
@@ -112,6 +110,7 @@ jobs:
           path: |
             release/*.AppImage
             release/*.deb
+            release/latest-linux.yml
 
   release:
     needs: build
@@ -131,8 +130,8 @@ jobs:
             ## 安装包下载
 
             ### macOS
-            - **Apple Silicon (M1/M2/M3)**: `FundVal-Live-*-arm64.dmg`
-            - **Intel**: `FundVal-Live-*-x64.dmg`
+            - **Apple Silicon (M1/M2/M3/M4)**: `FundVal-Live-*.dmg`
+            - **Intel Mac**: 请使用 Rosetta 2 运行 Apple Silicon 版本
 
             ### Windows
             - **64位**: `FundVal-Live-Setup-*.exe`
@@ -141,24 +140,11 @@ jobs:
             - **AppImage**: `FundVal-Live-*.AppImage`
             - **Debian/Ubuntu**: `fundval-live_*_amd64.deb`
 
-            ## 本次更新 (v1.2.7)
+            ## 本次更新 (v1.2.8)
 
-            ### 优化AI显示，支持think模块显示
-
-            ### 🐛 Bug修复
-            - **数据库连接池优化**: 修复了73处不当的连接关闭操作，提升系统稳定性
-            - **AI分析数据一致性**: 修复AI分析时技术指标与前端显示不一致的问题
-            - **图表显示**: 修复暗色模式下图表颜色对比度不足的问题
-
-            ### ⚡ 性能优化
-            - 优化数据库连接池，减少连接创建开销
-            - 优化主题切换性能，减少不必要的localStorage写入
-            - 改进图表渲染性能
-
-            ### 🔧 技术改进
-            - 重构数据库连接管理，使用thread-local连接池
-            - 统一AI分析和前端显示的数据源
-            - 清理重复的CSS类名，减小bundle体积
+            1. 解决OOM问题
+            2. 客户端自动更新功能
+            3. 支持AI分析历史
 
             ---
 

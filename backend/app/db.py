@@ -747,6 +747,48 @@ def init_db():
         cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (10)")
         logger.info("Migration 10 completed: user_settings merged into settings")
 
+    # Migration 11: Create ai_analysis_history table
+    if current_version < 11:
+        logger.info("Running migration 11: Creating ai_analysis_history table")
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS ai_analysis_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                account_id INTEGER NOT NULL,
+                fund_code TEXT NOT NULL,
+                fund_name TEXT NOT NULL,
+                prompt_id INTEGER,
+                prompt_name TEXT NOT NULL,
+                markdown TEXT NOT NULL,
+                indicators_json TEXT,
+                status TEXT NOT NULL CHECK(status IN ('success', 'failed')) DEFAULT 'success',
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_analysis_history_main
+            ON ai_analysis_history(user_id, account_id, fund_code, created_at DESC)
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_analysis_history_prompt
+            ON ai_analysis_history(user_id, prompt_id, created_at DESC)
+        """)
+
+        # Create index for delete operations: (user_id, id)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_analysis_history_user_id
+            ON ai_analysis_history(user_id, id)
+        """)
+
+        cursor.execute("INSERT OR IGNORE INTO schema_version (version) VALUES (11)")
+        logger.info("Migration 11 completed: ai_analysis_history table created")
+
     conn.commit()
     conn.close()
     logger.info("Database initialized.")

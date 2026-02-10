@@ -2,6 +2,7 @@ import time
 import json
 import re
 import logging
+import atexit
 from typing import List, Dict, Any
 
 import pandas as pd
@@ -36,10 +37,14 @@ def _get_http_session():
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
             pool_connections=10,
-            pool_maxsize=20
+            pool_maxsize=20,
+            pool_block=False  # 不阻塞，避免死锁
         )
         _http_session.mount("http://", adapter)
         _http_session.mount("https://", adapter)
+
+        # 进程退出时关闭 session
+        atexit.register(_http_session.close)
     return _http_session
 
 

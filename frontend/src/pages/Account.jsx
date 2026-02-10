@@ -235,12 +235,30 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
           <table className="w-full text-base text-left border-collapse">
             <thead className="bg-slate-50 text-slate-500 font-medium text-xs uppercase tracking-wider sticky top-[73px] z-30 shadow-sm">
               <tr>
-                <th className="px-4 py-3 text-left border-b border-slate-100 bg-slate-50 rounded-tl-xl">基金</th>
-                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">净值 | 估值</th>
-                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">份额 | 成本</th>
-                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">持有收益</th>
-                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">当日预估</th>
-                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">实际总值</th>
+                <th className="px-4 py-3 text-left border-b border-slate-100 bg-slate-50 rounded-tl-xl">
+                  <div>基金信息</div>
+                  <div className="text-[10px] text-slate-400 normal-case mt-0.5">持有总收益%</div>
+                </th>
+                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">
+                  <div>预估净值</div>
+                  <div className="text-[10px] text-slate-400 normal-case mt-0.5">昨日净值</div>
+                </th>
+                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">
+                  <div>预估收益</div>
+                  <div className="text-[10px] text-slate-400 normal-case mt-0.5">涨跌%</div>
+                </th>
+                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">
+                  <div>实际总值</div>
+                  <div className="text-[10px] text-slate-400 normal-case mt-0.5">实际收益</div>
+                </th>
+                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">
+                  <div>份额</div>
+                  <div className="text-[10px] text-slate-400 normal-case mt-0.5">成本</div>
+                </th>
+                <th className="px-4 py-3 text-right border-b border-slate-100 bg-slate-50">
+                  <div>预估总收益</div>
+                  <div className="text-[10px] text-slate-400 normal-case mt-0.5">预估总收益%</div>
+                </th>
                 <th className="px-4 py-3 text-center border-b border-slate-100 bg-slate-50 rounded-tr-xl">操作</th>
               </tr>
             </thead>
@@ -251,92 +269,120 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
                     暂无持仓，快去记一笔吧
                   </td>
                 </tr>
-              ) : sortedPositions.map((pos) => (
-                <tr key={pos.code} className="hover:bg-slate-50 transition-colors">
-                  <td
-                    className="px-4 py-3 cursor-pointer group max-w-[180px]"
-                    onClick={() => onSelectFund && onSelectFund(pos.code)}
-                  >
-                    <div className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors truncate" title={pos.name}>{pos.name}</div>
-                    <div className="text-xs text-slate-400 font-mono">{pos.code}</div>
-                  </td>
+              ) : sortedPositions.map((pos) => {
+                // ML 估算处理：当 is_est_valid=false 但有 estimate 时，手动计算 day_income
+                const displayDayIncome = pos.is_est_valid
+                  ? pos.day_income
+                  : (pos.estimate > 0 ? (pos.estimate - pos.nav) * pos.shares : 0);
 
-                  {/* Price Column */}
-                  <td className="px-4 py-3 text-right font-mono">
-                    <div className="flex items-center justify-end gap-1">
-                      <div className="text-slate-500 text-xs" title="昨日净值">{pos.nav.toFixed(4)}</div>
-                      {pos.nav_updated_today ? (
-                        <CheckCircle className="w-3 h-3 text-green-500" title="当日净值已更新" />
-                      ) : (
-                        <Clock className="w-3 h-3 text-slate-300" title="当日净值未更新" />
-                      )}
-                    </div>
-                    <div className={`font-medium ${getRateColor(pos.est_rate)}`} title="实时估值">
-                        {pos.estimate > 0 ? pos.estimate.toFixed(4) : '--'}
-                    </div>
-                  </td>
+                // 判断是否有有效估值（用于显示颜色）
+                const hasValidEstimate = pos.estimate > 0;
 
-                  {/* Position Column */}
-                  <td className="px-4 py-3 text-right font-mono text-slate-600">
-                    <div>{pos.shares.toLocaleString()}</div>
-                    <div className="text-xs text-slate-400">{pos.cost.toFixed(4)}</div>
-                  </td>
+                return (
+                  <tr key={pos.code} className="hover:bg-slate-50 transition-colors">
+                    {/* Fund Info Column */}
+                    <td
+                      className="px-4 py-3 cursor-pointer group max-w-[220px]"
+                      onClick={() => onSelectFund && onSelectFund(pos.code)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-slate-800 group-hover:text-blue-600 transition-colors truncate" title={pos.name}>
+                            {pos.name}
+                          </div>
+                          <div className="text-xs text-slate-400 font-mono">{pos.code}</div>
+                        </div>
+                        <div className={`text-sm font-semibold whitespace-nowrap ${getRateColor(pos.accumulated_return_rate)}`}>
+                          {pos.accumulated_return_rate > 0 ? '+' : ''}{pos.accumulated_return_rate.toFixed(2)}%
+                        </div>
+                      </div>
+                    </td>
 
-                  {/* Accumulated Income */}
-                  <td className="px-4 py-3 text-right font-mono">
-                    <div className={`font-medium ${getRateColor(pos.accumulated_income)}`}>
+                    {/* Estimate / NAV Column */}
+                    <td className="px-4 py-3 text-right font-mono">
+                      <div className="flex items-center justify-end gap-1">
+                        <div
+                          className={`font-medium ${!hasValidEstimate ? 'text-slate-300' : getRateColor(pos.est_rate)}`}
+                          title={!pos.is_est_valid && hasValidEstimate ? "ML估算" : "实时估值"}
+                        >
+                          {hasValidEstimate ? pos.estimate.toFixed(4) + (!pos.is_est_valid ? '*' : '') : '--'}
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-1 mt-0.5">
+                        <div className="text-slate-500 text-xs" title="昨日净值">{pos.nav.toFixed(4)}</div>
+                        {pos.nav_updated_today ? (
+                          <CheckCircle className="w-3 h-3 text-green-500" title="当日净值已更新" />
+                        ) : (
+                          <Clock className="w-3 h-3 text-slate-300" title="当日净值未更新" />
+                        )}
+                      </div>
+                    </td>
+
+                    {/* Intraday PnL Column */}
+                    <td className="px-4 py-3 text-right font-mono">
+                      <div className={`font-medium ${!hasValidEstimate ? 'text-slate-300' : getRateColor(displayDayIncome)}`}>
+                        {hasValidEstimate ? (displayDayIncome > 0 ? '+' : '') + displayDayIncome.toFixed(2) + (!pos.is_est_valid ? '*' : '') : '--'}
+                      </div>
+                      <div className={`text-xs mt-0.5 ${!hasValidEstimate ? 'text-slate-300' : getRateColor(pos.est_rate)}`}>
+                        {hasValidEstimate ? (pos.est_rate > 0 ? '+' : '') + pos.est_rate.toFixed(2) + '%' + (!pos.is_est_valid ? '*' : '') : '--'}
+                      </div>
+                    </td>
+
+                    {/* Holding Value / Income (Yesterday) */}
+                    <td className="px-4 py-3 text-right font-mono">
+                      <div className="text-slate-800 font-medium">
+                        {pos.nav_market_value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </div>
+                      <div className={`text-xs mt-0.5 ${getRateColor(pos.accumulated_income)}`}>
                         {pos.accumulated_income > 0 ? '+' : ''}{pos.accumulated_income.toFixed(2)}
-                    </div>
-                    <div className={`text-xs ${getRateColor(pos.accumulated_return_rate)}`}>
-                        {pos.accumulated_return_rate > 0 ? '+' : ''}{pos.accumulated_return_rate.toFixed(2)}%
-                    </div>
-                  </td>
+                      </div>
+                    </td>
 
-                  {/* Intraday Income */}
-                  <td className="px-4 py-3 text-right font-mono">
-                    <div className={`font-medium ${!pos.is_est_valid ? 'text-slate-300' : getRateColor(pos.day_income)}`}>
-                        {pos.is_est_valid ? (pos.day_income > 0 ? '+' : '') + pos.day_income.toFixed(2) : '--'}
-                    </div>
-                    <div className={`text-xs ${!pos.is_est_valid ? 'text-slate-300' : getRateColor(pos.est_rate)}`}>
-                        {pos.is_est_valid ? (pos.est_rate > 0 ? '+' : '') + pos.est_rate.toFixed(2) + '%' : '--'}
-                    </div>
-                  </td>
+                    {/* Shares / Cost Column */}
+                    <td className="px-4 py-3 text-right font-mono text-slate-600">
+                      <div className="text-sm">{pos.shares.toLocaleString()}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">{pos.cost.toFixed(4)}</div>
+                    </td>
 
-                  {/* 实际总值：净值 × 份额；下方为实际收益（不含当日预估） */}
-                  <td className="px-4 py-3 text-right font-mono">
-                     <div className="text-slate-800 font-medium">{(pos.nav_market_value ?? pos.est_market_value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                     <div className={`text-xs ${getRateColor(pos.accumulated_income)}`}>
-                        {pos.accumulated_income > 0 ? '+' : ''}{pos.accumulated_income.toFixed(2)}
-                     </div>
-                  </td>
+                    {/* Total Projected PnL Column */}
+                    <td className="px-4 py-3 text-right font-mono">
+                      <div className={`font-medium ${getRateColor(pos.total_income)}`}>
+                        {pos.total_income > 0 ? '+' : ''}{pos.total_income.toFixed(2)}
+                      </div>
+                      <div className={`text-xs mt-0.5 ${getRateColor(pos.total_return_rate)}`}>
+                        {pos.total_return_rate > 0 ? '+' : ''}{pos.total_return_rate.toFixed(2)}%
+                      </div>
+                    </td>
 
-                  <td className="px-4 py-3">
-                    <div className="flex justify-center gap-2">
-                      {!isAggregatedView && (
-                        <>
-                          <button
-                            onClick={() => handleOpenModal(pos)}
-                            className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
-                            title="修改持仓"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeletePosition(pos.code)}
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                            title="删除"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </>
-                      )}
-                      {isAggregatedView && (
-                        <span className="text-xs text-slate-400">仅查看</span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    {/* Actions Column */}
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center gap-2">
+                        {!isAggregatedView && (
+                          <>
+                            <button
+                              onClick={() => handleOpenModal(pos)}
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                              title="修改持仓"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDeletePosition(pos.code)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                              title="删除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                        {isAggregatedView && (
+                          <span className="text-xs text-slate-400">仅查看</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

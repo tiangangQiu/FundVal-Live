@@ -1,4 +1,5 @@
-const { app, BrowserWindow, Tray, Menu } = require('electron');
+const { app, BrowserWindow, Tray, Menu, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const { spawn } = require('child_process');
 const path = require('path');
 const http = require('http');
@@ -9,6 +10,11 @@ let mainWindow = null;
 let backendProcess = null;
 let tray = null;
 let backendPort = 21345; // 默认端口
+let updateDownloaded = false; // 标记更新是否已下载
+
+// 配置 autoUpdater
+autoUpdater.autoDownload = true; // 自动下载更新
+autoUpdater.autoInstallOnAppQuit = true; // 退出时自动安装
 
 // 配置文件路径
 const configDir = path.join(os.homedir(), '.fundval-live');
@@ -217,6 +223,13 @@ function createTray() {
       }
     },
     {
+      label: '检查更新',
+      click: () => {
+        checkForUpdates();
+      }
+    },
+    { type: 'separator' },
+    {
       label: '退出',
       click: () => {
         app.isQuitting = true;
@@ -251,6 +264,11 @@ app.whenReady().then(async () => {
 
     // 创建托盘
     createTray();
+
+    // 检查更新（启动后 3 秒）
+    setTimeout(() => {
+      checkForUpdates();
+    }, 3000);
 
     log('✅ FundVal Live is ready!');
   } catch (error) {
@@ -302,3 +320,78 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   log(`Unhandled rejection at: ${promise}, reason: ${reason}`);
 });
+
+// ==================== Auto Updater ====================
+
+function checkForUpdates() {
+  if (process.env.NODE_ENV === 'development' || process.argv.includes('--dev')) {
+    log('⏭️  Skipping update check in development mode');
+    return;
+  }
+
+  log('🔍 Checking for updates...');
+  autoUpdater.checkForUpdates().catch(err => {
+    log(`❌ Update check failed: ${err.message}`);
+  });
+}
+
+// 检查更新时
+autoUpdater.on('checking-for-update', () => {
+  log('🔍 Checking for updates...');
+});
+
+// 发现新版本
+autoUpdater.on('update-available', (info) => {
+  log(`✨ Update available: ${info.version}`);
+  if (mainWindow) {
+    mainWindow.webContents.send('update-available', info);
+  }
+});
+
+// 没有新版本
+autoUpdater.on('update-not-available', (info) => {
+  log(`✅ Already up to date: ${info.version}`);
+});
+
+// 下载进度
+autoUpdater.on('download-progress', (progressObj) => {
+  const logMessage = `⬇️  Downloading: ${progressObj.percent.toFixed(2)}% (${(progressObj.transferred / 1024 / 1024).toFixed(2)}MB / ${(progressObj.total / 1024 / 1024).toFixed(2)}MB)`;
+  log(logMessage);
+  if (mainWindow) {
+    mainWindow.webContents.send('download-progress', progressObj);
+  }
+});
+
+// 下载完成
+autoUpdater.on('update-downloaded', (info) => {
+  log(`✅ Update downloaded: ${info.version}`);
+  updateDownloaded = true;
+
+  // 显示对话框询问用户是否立即重启
+  dialog.showMessageBox(mainWindow, {
+    type: 'info',
+    title: '更新已下载',
+    message: `新版本 ${info.version} 已下载完成`,
+    detail: '点击「立即重启」安装更新，或点击「稍后」在下次启动时安装。',
+    buttons: ['立即重启', '稍后'],
+    defaultId: 0,
+    cancelId: 1
+  }).then(result => {
+    if (result.response === 0) {
+      // 立即重启并安装
+      log('🔄 Restarting to install update...');
+      autoUpdater.quitAndInstall(false, true);
+    } else {
+      log('⏭️  Update will be installed on next launch');
+    }
+  });
+});
+
+// 更新错误
+autoUpdater.on('error', (err) => {
+  log(`❌ Update error: ${err.message}`);
+  if (mainWindow) {
+    mainWindow.webContents.send('update-error', err.message);
+  }
+});
+

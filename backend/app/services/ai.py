@@ -299,6 +299,19 @@ class AIService:
                 # If wrapped in generic code blocks, extract content
                 clean_markdown = clean_markdown.split("```")[1].split("```")[0].strip()
 
+            # Save to history
+            self._save_analysis_history(
+                user_id=user_id,
+                account_id=fund_info.get("account_id", 1),
+                fund_code=fund_id,
+                fund_name=fund_name,
+                prompt_id=prompt_id,
+                prompt_name=self._get_prompt_name(prompt_id, user_id),
+                markdown=clean_markdown,
+                indicators_json=json.dumps(indicators),
+                status="success"
+            )
+
             # Return markdown directly with metadata
             return {
                 "markdown": clean_markdown,
@@ -310,10 +323,134 @@ class AIService:
             import traceback
             error_detail = traceback.format_exc()
             print(f"AI Analysis Error: {e}\n{error_detail}")
+
+            error_markdown = f"## 分析失败\n\nLLM 调用失败: {str(e)}\n\n请检查 API 配置和提示词格式。"
+
+            # Save failed analysis to history
+            self._save_analysis_history(
+                user_id=user_id,
+                account_id=fund_info.get("account_id", 1),
+                fund_code=fund_id,
+                fund_name=fund_name,
+                prompt_id=prompt_id,
+                prompt_name=self._get_prompt_name(prompt_id, user_id),
+                markdown=error_markdown,
+                indicators_json=json.dumps(indicators),
+                status="failed",
+                error_message=str(e)
+            )
+
             return {
-                "markdown": f"## 分析失败\n\nLLM 调用失败: {str(e)}\n\n请检查 API 配置和提示词格式。",
+                "markdown": error_markdown,
                 "indicators": indicators,
                 "timestamp": datetime.datetime.now().strftime("%H:%M:%S")
             }
+
+    def _get_prompt_name(self, prompt_id: Optional[int], user_id: Optional[int]) -> str:
+        """Get prompt name by ID"""
+        if not prompt_id:
+            return "默认提示词"
+
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        if user_id is None:
+            cursor.execute("SELECT name FROM ai_prompts WHERE id = ? AND user_id IS NULL", (prompt_id,))
+        else:
+            cursor.execute("SELECT name FROM ai_prompts WHERE id = ? AND user_id = ?", (prompt_id, user_id))
+
+        row = cursor.fetchone()
+        return row["name"] if row else f"Prompt #{prompt_id}"
+
+    def _save_analysis_history(
+        self,
+        user_id: Optional[int],
+        account_id: int,
+        fund_code: str,
+        fund_name: str,
+        prompt_id: Optional[int],
+        prompt_name: str,
+        markdown: str,
+        indicators_json: str,
+        status: str,
+        error_message: Optional[str] = None
+    ):
+        """Save analysis result to history and cleanup old records"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Insert history record
+            cursor.execute("""
+                INSERT INTO ai_analysis_history
+                (user_id, account_id, fund_code, fund_name, prompt_id, prompt_name,
+                 markdown, indicators_json, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (user_id, account_id, fund_code, fund_name, prompt_id, prompt_name,
+                  markdown, indicators_json, status, error_message))
+
+            conn.commit()
+
+            # Cleanup old records (keep last 50 per user+account+fund)
+            self._cleanup_old_history(user_id, account_id, fund_code)
+
+        except Exception as e:
+            try:
+                conn.rollback()
+            except:
+                pass
+            print(f"Failed to save analysis history: {e}")
+
+    def _cleanup_old_history(self, user_id: Optional[int], account_id: int, fund_code: str):
+        """Keep only last 50 records per (user_id, account_id, fund_code)"""
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+
+            # Count records for this combination
+            if user_id is None:
+                cursor.execute("""
+                    SELECT COUNT(*) as cnt FROM ai_analysis_history
+                    WHERE user_id IS NULL AND account_id = ? AND fund_code = ?
+                """, (account_id, fund_code))
+            else:
+                cursor.execute("""
+                    SELECT COUNT(*) as cnt FROM ai_analysis_history
+                    WHERE user_id = ? AND account_id = ? AND fund_code = ?
+                """, (user_id, account_id, fund_code))
+
+            count = cursor.fetchone()["cnt"]
+
+            if count > 50:
+                # Delete oldest records using rowid for better performance
+                if user_id is None:
+                    cursor.execute("""
+                        DELETE FROM ai_analysis_history
+                        WHERE rowid IN (
+                            SELECT rowid FROM ai_analysis_history
+                            WHERE user_id IS NULL AND account_id = ? AND fund_code = ?
+                            ORDER BY created_at ASC
+                            LIMIT ?
+                        )
+                    """, (account_id, fund_code, count - 50))
+                else:
+                    cursor.execute("""
+                        DELETE FROM ai_analysis_history
+                        WHERE rowid IN (
+                            SELECT rowid FROM ai_analysis_history
+                            WHERE user_id = ? AND account_id = ? AND fund_code = ?
+                            ORDER BY created_at ASC
+                            LIMIT ?
+                        )
+                    """, (user_id, account_id, fund_code, count - 50))
+
+                conn.commit()
+
+        except Exception as e:
+            try:
+                conn.rollback()
+            except:
+                pass
+            print(f"Failed to cleanup old history: {e}")
 
 ai_service = AIService()

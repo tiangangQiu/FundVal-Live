@@ -147,6 +147,37 @@ export const deletePrompt = async (id) => {
     return api.delete(`/ai/prompts/${id}`);
 };
 
+// AI Analysis History
+export const getAnalysisHistory = async (fundCode, accountId, params = {}) => {
+    try {
+        const response = await api.get('/ai/analysis_history', {
+            params: {
+                fund_code: fundCode,
+                account_id: accountId,
+                ...params
+            }
+        });
+        return response.data.records || [];
+    } catch (error) {
+        console.error("Get analysis history failed", error);
+        return [];
+    }
+};
+
+export const getAnalysisHistoryDetail = async (id) => {
+    try {
+        const response = await api.get(`/ai/analysis_history/${id}`);
+        return response.data;
+    } catch (error) {
+        console.error("Get analysis history detail failed", error);
+        throw error;
+    }
+};
+
+export const deleteAnalysisHistory = async (id) => {
+    return api.delete(`/ai/analysis_history/${id}`);
+};
+
 // Data import/export
 export const exportData = async (modules) => {
     try {
