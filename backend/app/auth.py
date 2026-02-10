@@ -105,8 +105,24 @@ def is_registration_allowed() -> bool:
 # ============================================================================
 
 # 内存存储 session（生产环境应该用 Redis）
+# 使用硬上限防止 OOM，达到上限时先清理过期 session
+_MAX_SESSIONS = 1000  # 硬上限，防止 OOM（降低到 1000）
 _sessions = {}
 _sessions_lock = threading.Lock()  # 并发保护
+
+
+def _cleanup_expired_locked():
+    """
+    清理过期 session（必须在持有锁时调用）
+
+    Returns:
+        int: 清理的 session 数量
+    """
+    now = datetime.now()
+    expired_keys = [sid for sid, data in _sessions.items() if now > data['expiry']]
+    for sid in expired_keys:
+        del _sessions[sid]
+    return len(expired_keys)
 
 
 def create_session(user_id: int) -> str:
@@ -118,11 +134,24 @@ def create_session(user_id: int) -> str:
 
     Returns:
         str: session_id
+
+    Raises:
+        HTTPException: 503 服务器繁忙（session 数量达到上限）
     """
     session_id = secrets.token_urlsafe(32)
     expiry = datetime.now() + timedelta(days=SESSION_EXPIRY_DAYS)
 
     with _sessions_lock:
+        # 先清理过期的 session
+        _cleanup_expired_locked()
+
+        # 如果还是达到上限，拒绝创建
+        if len(_sessions) >= _MAX_SESSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="服务器繁忙，请稍后重试"
+            )
+
         _sessions[session_id] = {
             'user_id': user_id,
             'expiry': expiry

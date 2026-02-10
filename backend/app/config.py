@@ -28,18 +28,20 @@ def _load_settings_from_db():
             return {}
 
         conn = sqlite3.connect(db_path, timeout=5.0)
-        cursor = conn.cursor()
-        cursor.execute("SELECT key, value, encrypted FROM settings WHERE user_id IS NULL")
-        rows = cursor.fetchall()
-        # Note: Connection will be closed by garbage collector
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT key, value, encrypted FROM settings WHERE user_id IS NULL")
+            rows = cursor.fetchall()
 
-        settings = {}
-        for row in rows:
-            key, value, encrypted = row
-            if encrypted and value:
-                value = decrypt_value(value)
-            settings[key] = value
-        return settings
+            settings = {}
+            for row in rows:
+                key, value, encrypted = row
+                if encrypted and value:
+                    value = decrypt_value(value)
+                settings[key] = value
+            return settings
+        finally:
+            conn.close()
     except Exception as e:
         print(f"Failed to load settings from DB: {e}")
         return {}
