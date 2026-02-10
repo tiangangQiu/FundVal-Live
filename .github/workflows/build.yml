@@ -13,8 +13,12 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: macos-13
+            platform: macOS
+            arch: x64
           - os: macos-latest
             platform: macOS
+            arch: arm64
           - os: windows-latest
             platform: Windows
           - os: ubuntu-latest
@@ -59,40 +63,15 @@ jobs:
         working-directory: frontend
         run: npm run build
 
-      - name: Build backend with PyInstaller (macOS arm64)
-        if: runner.os == 'macOS'
-        run: |
-          arch -arm64 uv run pyinstaller backend.spec --clean
-          mv dist/fundval-backend dist/fundval-backend-arm64
-
-      - name: Build backend with PyInstaller (macOS x64)
-        if: runner.os == 'macOS'
-        run: |
-          arch -x86_64 uv run pyinstaller backend.spec --clean
-          mv dist/fundval-backend dist/fundval-backend-x64
-
-      - name: Build backend with PyInstaller (Windows/Linux)
-        if: runner.os != 'macOS'
+      - name: Build backend with PyInstaller
         run: uv run pyinstaller backend.spec --clean
 
       - name: Install Electron dependencies
         run: npm ci
 
-      - name: Build Electron app (macOS arm64)
+      - name: Build Electron app (macOS)
         if: runner.os == 'macOS'
-        run: |
-          mv dist/fundval-backend-arm64 dist/fundval-backend
-          npm run dist -- --arm64
-          mv dist/fundval-backend dist/fundval-backend-arm64
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build Electron app (macOS x64)
-        if: runner.os == 'macOS'
-        run: |
-          mv dist/fundval-backend-x64 dist/fundval-backend
-          npm run dist -- --x64
-          mv dist/fundval-backend dist/fundval-backend-x64
+        run: npm run dist -- --${{ matrix.arch }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -112,7 +91,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4
         with:
-          name: macos-build
+          name: macos-build-${{ matrix.arch }}
           path: |
             release/*.dmg
             release/latest-mac.yml
@@ -201,7 +180,8 @@ jobs:
             本项目采用 AGPL-3.0 协议开源。如果你使用本项目代码提供网络服务，必须开源你的修改。
             详见：https://github.com/Ye-Yu-Mo/FundVal-Live/blob/main/LICENSE
           files: |
-            macos-build/*
+            macos-build-x64/*
+            macos-build-arm64/*
             windows-build/*
             linux-build/*
           draft: false
