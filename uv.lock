@@ -416,10 +416,14 @@ dependencies = [
     { name = "langchain-openai" },
     { name = "numpy" },
     { name = "pandas" },
-    { name = "psycopg2-binary" },
     { name = "python-dotenv" },
     { name = "requests" },
     { name = "uvicorn" },
+]
+
+[package.optional-dependencies]
+postgres = [
+    { name = "psycopg2-binary" },
 ]
 
 [package.metadata]
@@ -432,11 +436,12 @@ requires-dist = [
     { name = "langchain-openai", specifier = ">=1.1.7" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pandas", specifier = ">=3.0.0" },
-    { name = "psycopg2-binary", specifier = "==2.9.10" },
+    { name = "psycopg2-binary", marker = "extra == 'postgres'", specifier = ">=2.9.10" },
     { name = "python-dotenv", specifier = ">=1.2.1" },
     { name = "requests", specifier = ">=2.32.5" },
     { name = "uvicorn", specifier = ">=0.40.0" },
 ]
+provides-extras = ["postgres"]
 
 [[package]]
 name = "h11"

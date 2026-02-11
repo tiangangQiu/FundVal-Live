@@ -471,62 +471,66 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-100">
+    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-blue-100 pb-20 md:pb-0">
       
-      {/* 1. Header Area */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. Header Area - 移动端紧凑，桌面端保持原样 */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50 shadow-sm pt-[env(safe-area-inset-top)]">
+        <div className="max-w-4xl mx-auto px-3 py-3 md:px-4 md:py-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
             
-            {/* Logo / Back Button */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1 md:flex-initial">
               {currentView === 'detail' ? (
                 <button 
                   onClick={handleBack}
-                  className="mr-2 p-1.5 -ml-2 rounded-full hover:bg-slate-100 text-slate-600 transition-colors"
+                  className="touch-target flex items-center justify-center mr-1 -ml-1 rounded-full hover:bg-slate-100 text-slate-600 transition-colors"
+                  aria-label="返回"
                 >
                   <ChevronLeft className="w-6 h-6" />
                 </button>
               ) : (
-                <div className="flex gap-2">
-                   <button
+                <>
+                  {/* 桌面端：顶部导航图标 */}
+                  <div className="hidden md:flex gap-2">
+                    <button
                       onClick={() => setCurrentView('list')}
-                      className={`p-2 rounded-lg transition-colors ${currentView === 'list' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
-                   >
+                      className={`p-2 rounded-lg transition-colors touch-target flex items-center justify-center ${currentView === 'list' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
+                      title="关注"
+                    >
                       <LayoutGrid className="w-6 h-6" />
-                   </button>
-                   <button
+                    </button>
+                    <button
                       onClick={() => setCurrentView('account')}
-                      className={`p-2 rounded-lg transition-colors ${currentView === 'account' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
-                   >
+                      className={`p-2 rounded-lg transition-colors touch-target flex items-center justify-center ${currentView === 'account' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
+                      title="账户"
+                    >
                       <Wallet className="w-6 h-6" />
-                   </button>
-                   {/* 管理员：显示用户管理按钮 */}
-                   {isMultiUserMode && isAdmin && (
-                     <button
+                    </button>
+                    {isMultiUserMode && isAdmin && (
+                      <button
                         onClick={() => setCurrentView('users')}
-                        className={`p-2 rounded-lg transition-colors ${currentView === 'users' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
+                        className={`p-2 rounded-lg transition-colors touch-target flex items-center justify-center ${currentView === 'users' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
                         title="用户管理"
-                     >
+                      >
                         <UserCog className="w-6 h-6" />
-                     </button>
-                   )}
-                   <button
+                      </button>
+                    )}
+                    <button
                       onClick={() => setCurrentView('settings')}
-                      className={`p-2 rounded-lg transition-colors ${currentView === 'settings' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
-                   >
+                      className={`p-2 rounded-lg transition-colors touch-target flex items-center justify-center ${currentView === 'settings' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-500'}`}
+                      title="设置"
+                    >
                       <SettingsIcon className="w-6 h-6" />
-                   </button>
-                </div>
+                    </button>
+                  </div>
+                </>
               )}
 
-              {/* Account Selector */}
               {currentView === 'account' && accounts.length > 0 && (
-                <div className="flex items-center gap-2 ml-4">
+                <div className="flex items-center gap-2 ml-0 md:ml-4 shrink-0">
                   <select
                     value={currentAccount}
                     onChange={(e) => setCurrentAccount(Number(e.target.value))}
-                    className="px-3 py-1.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[44px] md:min-h-0"
                   >
                     <option value={0}>全部账户</option>
                     {accounts.map(acc => (
@@ -535,7 +539,7 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
                   </select>
                   <button
                     onClick={() => setAccountModalOpen(true)}
-                    className="p-1.5 text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                    className="p-2.5 touch-target flex items-center justify-center text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                     title="管理账户"
                   >
                     <Users className="w-5 h-5" />
@@ -543,25 +547,25 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
                 </div>
               )}
 
-              <div>
-                <h1 className="text-lg font-bold text-slate-800 leading-tight">
+              <div className="min-w-0 flex-1 md:flex-initial">
+                <h1 className="text-base md:text-lg font-bold text-slate-800 leading-tight truncate">
                   {currentView === 'detail' ? '基金详情' : (currentView === 'account' ? '我的账户' : (currentView === 'settings' ? '设置' : 'FundVal Live'))}
                 </h1>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-slate-400 hidden sm:block">
                   {currentView === 'detail' ? '盘中实时估值分析' : '盘中估值参考工具'}
                 </p>
               </div>
             </div>
 
-            {/* Search Bar (Only in List View) */}
+            {/* Search Bar (Only in List View) - 移动端全宽 */}
             {currentView === 'list' && (
-              <form onSubmit={handleSearch} className="relative flex-1 max-w-md">
+              <form onSubmit={handleSearch} className="relative w-full md:flex-1 md:max-w-md min-w-0">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4 z-10" />
                   <input
                     type="text"
-                    placeholder="输入基金代码或名称 (如: 005827 或 易方达蓝筹)"
-                    className="w-full pl-10 pr-20 py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none"
+                    placeholder="基金代码或名称"
+                    className="w-full pl-10 pr-20 py-2.5 md:py-2 bg-slate-100 border-none rounded-full text-sm focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all outline-none min-h-[44px] md:min-h-0"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => searchQuery && setShowSearchResults(true)}
@@ -611,8 +615,8 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
               </form>
             )}
 
-            {/* User / Status（手机端也显示，小屏换行） */}
-            <div className="flex flex-wrap items-center gap-2 md:gap-4 text-xs text-slate-500">
+            {/* User / Status */}
+            <div className="hidden md:flex items-center gap-4 text-xs text-slate-500">
               {/* 多用户模式：显示用户信息和登出按钮 */}
               {isMultiUserMode && currentUser && (
                 <>
@@ -655,8 +659,8 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
         </div>
       </header>
 
-      {/* 2. Main Content Area */}
-      <main className="max-w-4xl mx-auto px-4 py-6">
+      {/* 2. Main Content Area - 移动端留出底部导航空间 */}
+      <main className="max-w-4xl mx-auto px-3 py-4 md:px-4 md:py-6">
         
         {currentView === 'list' && (
           <FundList 
@@ -710,8 +714,37 @@ function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
         />
       )}
 
+      {/* 3. 移动端底部导航 - 仅 list/account/settings 时显示 */}
+      {(currentView === 'list' || currentView === 'account' || currentView === 'settings') && (
+        <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)]">
+          <div className="max-w-4xl mx-auto flex justify-around items-center h-14">
+            <button
+              onClick={() => setCurrentView('list')}
+              className={`flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-colors ${currentView === 'list' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'}`}
+            >
+              <LayoutGrid className="w-6 h-6" />
+              <span className="text-xs">关注</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('account')}
+              className={`flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-colors ${currentView === 'account' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'}`}
+            >
+              <Wallet className="w-6 h-6" />
+              <span className="text-xs">账户</span>
+            </button>
+            <button
+              onClick={() => setCurrentView('settings')}
+              className={`flex flex-col items-center justify-center flex-1 h-full gap-0.5 transition-colors ${currentView === 'settings' ? 'text-blue-600 bg-blue-50' : 'text-slate-500'}`}
+            >
+              <SettingsIcon className="w-6 h-6" />
+              <span className="text-xs">设置</span>
+            </button>
+          </div>
+        </nav>
+      )}
+
       {/* 4. Footer */}
-      <footer className="max-w-4xl mx-auto px-4 py-8 text-center text-slate-400 text-xs">
+      <footer className="max-w-4xl mx-auto px-3 md:px-4 py-6 md:py-8 text-center text-slate-400 text-xs">
         <p className="mb-2">数据仅供参考，不构成投资建议。</p>
         <p className="mb-3">
           Data Source: AkShare Public API · Status: <span className="text-green-600">Operational</span>

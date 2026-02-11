@@ -1,1 +1,41 @@
 @import "tailwindcss";
+
+/* 移动端兼容：安全区域、触控、防止 iOS 输入框缩放 */
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+/* 输入框至少 16px 避免 iOS 聚焦时自动缩放 */
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea {
+  font-size: 16px !important;
+}
+@media (min-width: 768px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  select,
+  textarea {
+    font-size: inherit;
+  }
+}
+/* 触控区域最小 44px */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+/* 横向滚动容器（隐藏滚动条但可滑动） */
+.overflow-x-auto {
+  -webkit-overflow-scrolling: touch;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

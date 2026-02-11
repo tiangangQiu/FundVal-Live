@@ -43,10 +43,20 @@ echo -e "${GREEN}✔ Frontend built${NC}"
 
 # 3. Start Backend
 echo -e "${BLUE}>>> [2/2] Starting Backend...${NC}"
+# Release port 21345 if already in use (e.g. previous run)
+BACKEND_PORT=21345
+if command -v lsof &> /dev/null; then
+    OLD_PID=$(lsof -ti :$BACKEND_PORT 2>/dev/null)
+    if [ -n "$OLD_PID" ]; then
+        echo -e "${YELLOW}>>> Port $BACKEND_PORT in use (PID: $OLD_PID), stopping old process...${NC}"
+        kill $OLD_PID 2>/dev/null || true
+        sleep 2
+    fi
+fi
 cd backend || exit
 uv sync > /dev/null 2>&1
 # Start with nohup and redirect to root logs folder
-nohup uv run uvicorn app.main:app --port 21345 --host 0.0.0.0 > ../logs/backend.log 2>&1 &
+nohup uv run uvicorn app.main:app --port $BACKEND_PORT --host 0.0.0.0 > ../logs/backend.log 2>&1 &
 BACKEND_PID=$!
 echo $BACKEND_PID > ../backend.pid
 cd ..

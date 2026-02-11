@@ -36,7 +36,8 @@ orjson==3.11.6
 packaging==25.0
 pandas==3.0.0
 primp==0.15.0
-psycopg2-binary==2.9.10
+# PostgreSQL 可选: 使用 PostgreSQL 时取消注释并安装 libpq-dev (Linux) 或 PostgreSQL (macOS)
+# psycopg2-binary==2.9.10
 pycparser==3.0
 pydantic==2.12.5
 pydantic-core==2.41.5

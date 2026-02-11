@@ -71,10 +71,10 @@ def export_data_endpoint(
 @router.post("/data/import")
 def import_data_endpoint(
     request: ImportRequest = Body(...),
-    current_user: User = Depends(require_auth)
+    current_user: Optional[User] = Depends(get_current_user)
 ):
     """
-    从 JSON 导入数据（需要认证）
+    从 JSON 导入数据。已登录时数据归属当前用户；未登录时使用 user_id=NULL（单用户模式）。
 
     Body:
         data: 完整的 JSON 数据对象
@@ -82,16 +82,13 @@ def import_data_endpoint(
         mode: 导入模式（merge 或 replace）
     """
     try:
-        # 验证模式
         if request.mode not in ["merge", "replace"]:
             raise HTTPException(status_code=400, detail="Invalid mode. Must be 'merge' or 'replace'")
 
-        # 验证模块列表
         invalid = [m for m in request.modules if m not in VALID_MODULES]
         if invalid:
             raise HTTPException(status_code=400, detail=f"Invalid modules: {', '.join(invalid)}")
 
-        # 导入数据（传入 current_user 用于设置 user_id）
         result = import_data(request.data, request.modules, request.mode, current_user)
 
         return result

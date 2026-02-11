@@ -10,34 +10,21 @@ from ..auth import User, get_current_user, require_auth
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# 需要加密的字段
 ENCRYPTED_FIELDS = {"OPENAI_API_KEY", "SMTP_PASSWORD"}
 
-# 字段验证规则
-def validate_email(email: str) -> bool:
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return re.match(pattern, email) is not None
 
 def validate_url(url: str) -> bool:
-    pattern = r'^https?://[^\s]+$'
-    return re.match(pattern, url) is not None
-
-def validate_port(port: str) -> bool:
-    try:
-        p = int(port)
-        return 1 <= p <= 65535
-    except:
-        return False
+    return bool(re.match(r'^https?://[^\s]+$', url))
 
 @router.get("/settings")
-def get_settings(current_user: User = Depends(require_auth)):
-    """获取所有设置（加密字段用 *** 掩码）"""
+def get_settings(current_user: Optional[User] = Depends(get_current_user)):
+    """获取设置（加密字段用 *** 掩码）。未登录时使用 user_id=NULL 的系统设置。"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        user_id = current_user.id if current_user is not None else None
 
-        cursor.execute("SELECT key, value, encrypted FROM settings WHERE user_id = ?", (current_user.id,))
-
+        cursor.execute("SELECT key, value, encrypted FROM settings WHERE user_id IS ?", (user_id,))
         rows = cursor.fetchall()
 
         settings = {}
@@ -45,24 +32,16 @@ def get_settings(current_user: User = Depends(require_auth)):
             key = row["key"]
             value = row["value"]
             encrypted = row["encrypted"]
-
-            # 加密字段用掩码
             if encrypted and value:
                 settings[key] = "***"
             else:
                 settings[key] = value
 
-        # 如果数据库为空，返回 .env 的默认值（掩码敏感信息）
         if not settings:
             settings = {
                 "OPENAI_API_KEY": "***" if Config.OPENAI_API_KEY else "",
                 "OPENAI_API_BASE": Config.OPENAI_API_BASE,
                 "AI_MODEL_NAME": Config.AI_MODEL_NAME,
-                "SMTP_HOST": Config.SMTP_HOST,
-                "SMTP_PORT": str(Config.SMTP_PORT),
-                "SMTP_USER": Config.SMTP_USER,
-                "SMTP_PASSWORD": "***" if Config.SMTP_PASSWORD else "",
-                "EMAIL_FROM": Config.EMAIL_FROM,
             }
 
         return {"settings": settings}
@@ -73,24 +52,11 @@ def get_settings(current_user: User = Depends(require_auth)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/settings")
-def update_settings(data: dict = Body(...), current_user: User = Depends(require_auth)):
-    """更新设置（部分更新，验证输入）"""
+def update_settings(data: dict = Body(...), current_user: Optional[User] = Depends(get_current_user)):
+    """更新设置（部分更新）。未登录时写入 user_id=NULL。"""
     try:
         settings = data.get("settings", {})
         errors = {}
-
-        # 验证输入
-        if "SMTP_PORT" in settings:
-            if not validate_port(settings["SMTP_PORT"]):
-                errors["SMTP_PORT"] = "端口必须在 1-65535 之间"
-
-        if "SMTP_USER" in settings and settings["SMTP_USER"]:
-            if not validate_email(settings["SMTP_USER"]):
-                errors["SMTP_USER"] = "邮箱格式不正确"
-
-        if "EMAIL_FROM" in settings and settings["EMAIL_FROM"]:
-            if not validate_email(settings["EMAIL_FROM"]):
-                errors["EMAIL_FROM"] = "邮箱格式不正确"
 
         if "OPENAI_API_BASE" in settings and settings["OPENAI_API_BASE"]:
             if not validate_url(settings["OPENAI_API_BASE"]):
@@ -99,16 +65,13 @@ def update_settings(data: dict = Body(...), current_user: User = Depends(require
         if errors:
             raise HTTPException(status_code=400, detail={"errors": errors})
 
-        # 保存到数据库
         conn = get_db_connection()
         cursor = conn.cursor()
+        user_id = current_user.id if current_user is not None else None
 
         for key, value in settings.items():
-            # 跳过掩码值（用户没有修改）
             if value == "***":
                 continue
-
-            # 判断是否需要加密
             encrypted = 1 if key in ENCRYPTED_FIELDS else 0
             if encrypted and value:
                 value = encrypt_value(value)
@@ -120,7 +83,7 @@ def update_settings(data: dict = Body(...), current_user: User = Depends(require
                     value = excluded.value,
                     encrypted = excluded.encrypted,
                     updated_at = CURRENT_TIMESTAMP
-            """, (key, value, encrypted, current_user.id))
+            """, (key, value, encrypted, user_id))
 
         conn.commit()
 
@@ -132,24 +95,22 @@ def update_settings(data: dict = Body(...), current_user: User = Depends(require
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/preferences")
-def get_preferences(current_user: User = Depends(require_auth)):
-    """获取用户偏好（自选列表、当前账户、排序选项）"""
+def get_preferences(current_user: Optional[User] = Depends(get_current_user)):
+    """获取用户偏好（自选列表、当前账户、排序选项）。未登录时使用 user_id=NULL 的默认偏好。"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        user_id = current_user.id if current_user is not None else None
 
-        # 获取自选列表
-        cursor.execute("SELECT value FROM settings WHERE user_id = ? AND key = 'user_watchlist'", (current_user.id,))
+        cursor.execute("SELECT value FROM settings WHERE user_id IS ? AND key = 'user_watchlist'", (user_id,))
         watchlist_row = cursor.fetchone()
         watchlist = watchlist_row["value"] if watchlist_row else "[]"
 
-        # 获取当前账户
-        cursor.execute("SELECT value FROM settings WHERE user_id = ? AND key = 'user_current_account'", (current_user.id,))
+        cursor.execute("SELECT value FROM settings WHERE user_id IS ? AND key = 'user_current_account'", (user_id,))
         account_row = cursor.fetchone()
-        current_account = int(account_row["value"]) if account_row else 1
+        current_account = int(account_row["value"]) if account_row and account_row["value"] else 1
 
-        # 获取排序选项
-        cursor.execute("SELECT value FROM settings WHERE user_id = ? AND key = 'user_sort_option'", (current_user.id,))
+        cursor.execute("SELECT value FROM settings WHERE user_id IS ? AND key = 'user_sort_option'", (user_id,))
         sort_row = cursor.fetchone()
         sort_option = sort_row["value"] if sort_row else None
 
@@ -165,11 +126,12 @@ def get_preferences(current_user: User = Depends(require_auth)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/preferences")
-def update_preferences(data: dict = Body(...), current_user: User = Depends(require_auth)):
-    """更新用户偏好"""
+def update_preferences(data: dict = Body(...), current_user: Optional[User] = Depends(get_current_user)):
+    """更新用户偏好。未登录时写入 user_id=NULL 的默认偏好。"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+        user_id = current_user.id if current_user is not None else None
 
         if "watchlist" in data:
             cursor.execute("""
@@ -178,7 +140,7 @@ def update_preferences(data: dict = Body(...), current_user: User = Depends(requ
                 ON CONFLICT(key, user_id) DO UPDATE SET
                     value = excluded.value,
                     updated_at = CURRENT_TIMESTAMP
-            """, (data["watchlist"], current_user.id))
+            """, (data["watchlist"], user_id))
 
         if "currentAccount" in data:
             cursor.execute("""
@@ -187,7 +149,7 @@ def update_preferences(data: dict = Body(...), current_user: User = Depends(requ
                 ON CONFLICT(key, user_id) DO UPDATE SET
                     value = excluded.value,
                     updated_at = CURRENT_TIMESTAMP
-            """, (str(data["currentAccount"]), current_user.id))
+            """, (str(data["currentAccount"]), user_id))
 
         if "sortOption" in data:
             cursor.execute("""
@@ -196,7 +158,7 @@ def update_preferences(data: dict = Body(...), current_user: User = Depends(requ
                 ON CONFLICT(key, user_id) DO UPDATE SET
                     value = excluded.value,
                     updated_at = CURRENT_TIMESTAMP
-            """, (data["sortOption"], current_user.id))
+            """, (data["sortOption"], user_id))
 
         conn.commit()
 

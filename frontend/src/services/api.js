@@ -78,16 +78,10 @@ export const deleteAccount = async (accountId) => {
     return api.delete(`/accounts/${accountId}`);
 };
 
-// Position management
+// Position management（仅使用聚合接口，不再调用 /account/positions，避免未登录时 401）
 export const getAccountPositions = async (accountId) => {
     try {
-        // 如果 accountId 为 0，调用聚合端点
-        if (accountId === 0) {
-            const response = await api.get('/positions/aggregate');
-            return response.data;
-        }
-
-        const response = await api.get('/account/positions', { params: { account_id: accountId } });
+        const response = await api.get('/positions/aggregate');
         return response.data;
     } catch (error) {
         console.error("Get positions failed", error);
@@ -122,6 +116,22 @@ export const getTransactions = async (accountId, code = null, limit = 100) => {
 
 export const updatePositionsNav = async (accountId) => {
     return api.post('/account/positions/update-nav', null, { params: { account_id: accountId } });
+};
+
+// Settings (AI etc., no auth required for single-user)
+export const getSettings = async () => {
+  try {
+    const response = await api.get('/settings');
+    return response.data.settings || {};
+  } catch (error) {
+    console.error('Get settings failed', error);
+    throw error;
+  }
+};
+
+export const updateSettings = async (settings) => {
+  const response = await api.post('/settings', { settings });
+  return response.data;
 };
 
 // AI Prompts management

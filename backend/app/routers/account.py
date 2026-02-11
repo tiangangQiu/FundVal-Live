@@ -127,15 +127,15 @@ def delete_account(account_id: int, current_user: User = Depends(require_auth)):
 
 # Position endpoints
 @router.get("/positions/aggregate")
-def get_aggregate_positions(current_user: User = Depends(require_auth)):
-    """获取当前用户所有账户的聚合持仓"""
+def get_aggregate_positions(current_user: Optional[User] = Depends(get_current_user)):
+    """获取聚合持仓。已登录时仅返回当前用户账户；未登录时返回所有账户（单用户模式）。"""
     try:
-        # 获取用户的所有账户
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        cursor.execute("SELECT id FROM accounts WHERE user_id = ?", (current_user.id,))
-
+        if current_user is not None:
+            cursor.execute("SELECT id FROM accounts WHERE user_id = ?", (current_user.id,))
+        else:
+            cursor.execute("SELECT id FROM accounts ORDER BY id")
         account_ids = [row["id"] for row in cursor.fetchall()]
         
 
@@ -368,15 +368,13 @@ def get_positions(
 @router.post("/account/positions/update-nav")
 def update_positions_nav(
     account_id: int = Query(..., description="账户 ID"),
-    current_user: User = Depends(require_auth)
+    current_user: Optional[User] = Depends(get_current_user)
 ):
     """
-    手动更新持仓基金的净值。
-    拉取所有持仓基金的最新净值并更新 fund_history 表。
-    只有当日净值已公布才算更新成功。
+    手动更新持仓基金的净值。未登录时也可调用（单用户模式）。
     """
-    # 验证所有权
-    verify_account_ownership(account_id, current_user)
+    if current_user is not None:
+        verify_account_ownership(account_id, current_user)
 
     import time
     from datetime import datetime

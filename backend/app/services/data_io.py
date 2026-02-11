@@ -9,6 +9,30 @@ logger = logging.getLogger(__name__)
 # Import order based on dependencies
 IMPORT_ORDER = ["settings", "ai_prompts", "accounts", "positions", "transactions", "subscriptions"]
 
+
+def _get_or_create_default_user_id(conn) -> int:
+    """未登录导入时使用：返回第一个用户 id，若无用户则创建默认用户并返回其 id。"""
+    cursor = conn.cursor()
+    cursor.execute("SELECT id FROM users ORDER BY id LIMIT 1")
+    row = cursor.fetchone()
+    if row:
+        return row["id"]
+    # 无用户时创建默认用户（仅用于单用户模式导入）
+    from ..auth import hash_password
+    import secrets
+    default_password = secrets.token_urlsafe(16)
+    cursor.execute(
+        "INSERT INTO users (username, password_hash, is_admin) VALUES (?, ?, 0)",
+        ("default", hash_password(default_password))
+    )
+    uid = cursor.lastrowid
+    cursor.execute(
+        "INSERT INTO accounts (name, description, user_id) VALUES (?, ?, ?)",
+        ("默认账户", "", uid)
+    )
+    conn.commit()
+    return uid
+
 # Sensitive fields that should be masked on export
 SENSITIVE_MASK = "***"
 
@@ -60,7 +84,7 @@ def export_data(modules: List[str], current_user: User) -> Dict[str, Any]:
     return result
 
 
-def import_data(data: Dict[str, Any], modules: List[str], mode: str, current_user: User) -> Dict[str, Any]:
+def import_data(data: Dict[str, Any], modules: List[str], mode: str, current_user: Optional[User] = None) -> Dict[str, Any]:
     """
     Import selected modules from JSON data.
 
@@ -68,7 +92,7 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str, current_use
         data: JSON data containing modules
         modules: List of module names to import
         mode: "merge" or "replace"
-        current_user: Current user (for setting user_id on imported data)
+        current_user: Current user (for setting user_id on imported data); None = single-user mode (user_id=NULL)
 
     Returns:
         Dict containing import results
@@ -79,9 +103,14 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str, current_use
     if "version" not in data:
         raise ValueError("Missing version field in import data")
 
-    user_id = current_user.id
+    user_id = current_user.id if current_user is not None else None
 
-    # Initialize result
+    conn = get_db_connection()
+    # 未登录时：settings 用 user_id=NULL；accounts/ai_prompts/positions/transactions/subscriptions 需非空 user_id，用默认用户
+    import_user_id = user_id
+    if import_user_id is None:
+        import_user_id = _get_or_create_default_user_id(conn)
+
     result = {
         "success": True,
         "total_records": 0,
@@ -92,8 +121,6 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str, current_use
         "details": {}
     }
 
-    conn = get_db_connection()
-    # Import modules in dependency order
     ordered_modules = [m for m in IMPORT_ORDER if m in modules]
 
     for module in ordered_modules:
@@ -102,23 +129,23 @@ def import_data(data: Dict[str, Any], modules: List[str], mode: str, current_use
 
         module_data = data["modules"][module]
 
-        # Skip empty modules
         if not module_data:
             continue
 
-        # Import module
+        # settings 使用 user_id=NULL（未登录时的默认偏好）；其余模块使用 import_user_id
+        uid = user_id if module == "settings" else import_user_id
         if module == "settings":
-            module_result = _import_settings(conn, module_data, mode, user_id)
+            module_result = _import_settings(conn, module_data, mode, uid)
         elif module == "ai_prompts":
-            module_result = _import_ai_prompts(conn, module_data, mode, user_id)
+            module_result = _import_ai_prompts(conn, module_data, mode, uid)
         elif module == "accounts":
-            module_result = _import_accounts(conn, module_data, mode, user_id)
+            module_result = _import_accounts(conn, module_data, mode, uid)
         elif module == "positions":
-            module_result = _import_positions(conn, module_data, mode, user_id)
+            module_result = _import_positions(conn, module_data, mode, uid)
         elif module == "transactions":
-            module_result = _import_transactions(conn, module_data, mode, user_id)
+            module_result = _import_transactions(conn, module_data, mode, uid)
         elif module == "subscriptions":
-            module_result = _import_subscriptions(conn, module_data, mode, user_id)
+            module_result = _import_subscriptions(conn, module_data, mode, uid)
         else:
             continue
 

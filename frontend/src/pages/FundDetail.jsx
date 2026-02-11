@@ -40,18 +40,17 @@ export const FundDetail = ({ fund, onSubscribe, accountId, onNavigate, hasPrev, 
     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
 
       {/* 1. Detail Header Card */}
-      <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-        {/* Navigation arrows */}
+      <div className="bg-white rounded-2xl p-4 sm:p-6 shadow-sm border border-slate-100">
         {onNavigate && totalCount > 1 && (
           <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
             <button
               onClick={() => onNavigate('prev')}
               disabled={!hasPrev}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 text-slate-600"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 text-slate-600"
               title="上一个基金"
             >
               <ChevronLeft className="w-4 h-4" />
-              上一个
+              <span className="hidden sm:inline">上一个</span>
             </button>
             <span className="text-xs text-slate-400">
               {currentIndex} / {totalCount}
@@ -59,22 +58,22 @@ export const FundDetail = ({ fund, onSubscribe, accountId, onNavigate, hasPrev, 
             <button
               onClick={() => onNavigate('next')}
               disabled={!hasNext}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 text-slate-600"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center gap-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed hover:bg-slate-100 text-slate-600"
               title="下一个基金"
             >
-              下一个
+              <span className="hidden sm:inline">下一个</span>
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
         )}
 
         <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 mb-6">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">{fund.type || '基金'}</span>
               <span className="text-slate-400 text-xs font-mono">{fund.id}</span>
             </div>
-            <h2 className="text-2xl font-bold text-slate-800">{fund.name}</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-slate-800 break-words">{fund.name}</h2>
             <div className="flex items-center gap-4 mt-2 text-sm text-slate-500">
               <span className="flex items-center gap-1"><User className="w-4 h-4" /> 基金经理: {fund.manager || '--'}</span>
             </div>

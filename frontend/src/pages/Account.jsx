@@ -145,9 +145,8 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
 
       {/* Actions */}
       <div className="space-y-4">
-        {/* 第一行：标题 + 操作按钮（小屏换行） */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
-          <h2 className="text-xl font-bold text-slate-800">
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
+          <h2 className="text-lg sm:text-xl font-bold text-slate-800">
             {isAggregatedView ? '全部账户持仓汇总' : '持仓明细'}
           </h2>
           <div className="flex flex-wrap gap-2">
@@ -202,7 +201,7 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
             {!isAggregatedView && (
               <button
                 onClick={() => handleOpenModal()}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors text-sm font-medium"
+                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-medium min-h-[44px] sm:min-h-0 items-center justify-center"
               >
                 <Plus className="w-4 h-4" />
                 记一笔
@@ -211,29 +210,31 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
           </div>
         </div>
 
-        {/* 第二行：分类筛选器（小屏可横向滚动） */}
-        <div className="flex gap-1 bg-slate-50 p-1 rounded-lg w-fit max-w-full overflow-x-auto pb-1">
-          {CATEGORIES.map(cat => (
-            <button
-              key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                selectedCategory === cat
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'text-slate-600 hover:bg-white hover:text-blue-600'
-              }`}
-            >
-              {cat} ({categoryCounts[cat]})
-            </button>
-          ))}
+        {/* 分类筛选器 - 移动端横向滚动 */}
+        <div className="overflow-x-auto no-scrollbar -mx-3 px-3 sm:mx-0 sm:px-0">
+          <div className="flex gap-1 bg-slate-50 p-1 rounded-lg w-max min-w-0">
+            {CATEGORIES.map(cat => (
+              <button
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
+                className={`px-3 py-2 sm:py-1.5 rounded text-sm font-medium transition-colors whitespace-nowrap touch-target min-h-[44px] sm:min-h-0 flex items-center justify-center ${
+                  selectedCategory === cat
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-white hover:text-blue-600'
+                }`}
+              >
+                {cat} ({categoryCounts[cat]})
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {/* Table（小屏横向滚动） */}
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200">
-        <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-          <table className="w-full text-base text-left border-collapse min-w-[700px]">
-            <thead className="bg-slate-50 text-slate-500 font-medium text-xs uppercase tracking-wider sticky top-[73px] z-30 shadow-sm">
+      {/* Table - 移动端横向滚动 */}
+      <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0">
+          <table className="w-full min-w-[640px] text-sm sm:text-base text-left border-collapse">
+            <thead className="bg-slate-50 text-slate-500 font-medium text-xs uppercase tracking-wider md:sticky md:top-14 z-20 shadow-sm">
               <tr>
                 <th className="px-4 py-3 text-left border-b border-slate-100 bg-slate-50 rounded-tl-xl">
                   <div>基金信息</div>
@@ -355,20 +356,20 @@ const Account = ({ currentAccount = 1, onSelectFund, onPositionChange, onSyncWat
                     </td>
 
                     {/* Actions Column */}
-                    <td className="px-4 py-3">
-                      <div className="flex justify-center gap-2">
+                    <td className="px-2 sm:px-4 py-3">
+                      <div className="flex justify-center gap-1 sm:gap-2">
                         {!isAggregatedView && (
                           <>
                             <button
                               onClick={() => handleOpenModal(pos)}
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
+                              className="p-2.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:p-1.5 flex items-center justify-center text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-colors"
                               title="修改持仓"
                             >
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => handleDeletePosition(pos.code)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                              className="p-2.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 sm:p-1.5 flex items-center justify-center text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors"
                               title="删除"
                             >
                               <Trash2 className="w-4 h-4" />

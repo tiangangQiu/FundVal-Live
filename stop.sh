@@ -25,4 +25,13 @@ else
     echo "No backend PID file found."
 fi
 
+# Also kill any process still bound to port 21345
+if command -v lsof &> /dev/null; then
+    OLD_PID=$(lsof -ti :21345 2>/dev/null)
+    if [ -n "$OLD_PID" ]; then
+        kill $OLD_PID 2>/dev/null
+        echo -e "Stopped process on port 21345 (PID: $OLD_PID)."
+    fi
+fi
+
 echo -e "${GREEN}>>> All services stopped.${NC}"
