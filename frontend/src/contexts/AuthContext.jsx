@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { getAuthMode, login as apiLogin, logout as apiLogout, getMe } from '../api/auth';
+import { login as apiLogin, logout as apiLogout } from '../api/auth';
 
 const AuthContext = createContext(null);
 
@@ -8,31 +8,11 @@ export function AuthProvider({ children }) {
   const [isMultiUserMode, setIsMultiUserMode] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // 检查系统模式和认证状态
+  // 鉴权已关闭：始终视为单用户模式，不要求登录，直接进入主界面
   const checkAuth = async () => {
-    try {
-      // 1. 获取系统模式
-      const modeData = await getAuthMode();
-      setIsMultiUserMode(modeData.multi_user_mode);
-
-      // 2. 如果是多用户模式，检查登录状态
-      if (modeData.multi_user_mode) {
-        try {
-          const user = await getMe();
-          setCurrentUser(user);
-        } catch (error) {
-          // 未登录或 session 过期
-          setCurrentUser(null);
-        }
-      } else {
-        // 单用户模式，不需要登录
-        setCurrentUser(null);
-      }
-    } catch (error) {
-      console.error('Failed to check auth:', error);
-    } finally {
-      setLoading(false);
-    }
+    setIsMultiUserMode(false);
+    setCurrentUser(null);
+    setLoading(false);
   };
 
   // 登录

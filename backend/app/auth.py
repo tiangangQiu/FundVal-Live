@@ -208,58 +208,48 @@ def _get_user_by_id(user_id: int) -> Optional[User]:
     return User(id=row[0], username=row[1], is_admin=row[2])
 
 
+def _get_default_user() -> Optional[User]:
+    """
+    无鉴权模式：返回数据库中的第一个用户，用于未登录时的默认身份。
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, username, is_admin FROM users ORDER BY id LIMIT 1")
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    return User(id=row[0], username=row[1], is_admin=row[2])
+
+
 # ============================================================================
-# FastAPI Dependencies
+# FastAPI Dependencies（已关闭鉴权：未登录时使用默认用户，不再返回 401）
 # ============================================================================
 
 def get_current_user(request: Request) -> Optional[User]:
     """
-    获取当前用户（FastAPI Dependency）
-
-    Args:
-        request: FastAPI Request 对象
-
-    Returns:
-        Optional[User]: 用户对象
-            - 单用户模式：返回 None
-            - 多用户模式：从 cookie 读取 session_id，返回 User 对象
+    获取当前用户。无鉴权模式：无 session 时返回默认用户（第一个用户），保证接口可用。
     """
-    # 从 cookie 读取 session_id
     session_id = request.cookies.get(SESSION_COOKIE_NAME)
-    if not session_id:
-        return None
-
-    # 获取 user_id
-    user_id = get_session_user(session_id)
-    if not user_id:
-        return None
-
-    # 获取用户信息
-    return _get_user_by_id(user_id)
+    if session_id:
+        user_id = get_session_user(session_id)
+        if user_id:
+            user = _get_user_by_id(user_id)
+            if user:
+                return user
+    return _get_default_user()
 
 
 def require_auth(request: Request) -> User:
     """
-    强制要求登录（FastAPI Dependency）
-
-    Args:
-        request: FastAPI Request 对象
-
-    Returns:
-        User: 用户对象
-
-    Raises:
-        HTTPException: 401 未登录
+    要求“当前用户”。无鉴权模式：未登录时返回默认用户，不再抛出 401。
     """
     user = get_current_user(request)
-
-    # 必须登录
     if user is None:
+        # 数据库无用户时仍返回 401（仅首次部署场景）
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="未登录"
         )
-
     return user
 
 

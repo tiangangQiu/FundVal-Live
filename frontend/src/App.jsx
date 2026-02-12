@@ -47,7 +47,7 @@ export default function App() {
 
 function AppContent({ currentUser, isMultiUserMode, isAdmin, logout }) {
   // --- State ---
-  const [currentView, setCurrentView] = useState('list'); // 'list' | 'detail' | 'account' | 'settings' | 'users'
+  const [currentView, setCurrentView] = useState('account'); // 'list' | 'detail' | 'account' | 'settings' | 'users'
   const [currentAccount, setCurrentAccount] = useState(currentUser?.default_account_id || 1);
   const [accounts, setAccounts] = useState([]);
   const [accountModalOpen, setAccountModalOpen] = useState(false);

@@ -113,18 +113,18 @@ export function usePositions(currentAccount, onPositionChange, onSyncWatchlist, 
   }, [currentAccount, onPositionChange, onRefetch]);
 
   /**
-   * 删除持仓
+   * 删除持仓（确认由调用方如 Popconfirm 处理）
+   * 仅当删除接口失败时抛出；refetch 失败不抛出，避免误报「删除失败」
    */
   const handleDeletePosition = useCallback(async (code) => {
-    if (!confirm(`确定删除 ${code} 吗？`)) return;
-
-    try {
-      await deletePosition(code, currentAccount);
-      onPositionChange && onPositionChange(code, 'remove');
-      onRefetch && onRefetch();
-    } catch (e) {
-      alert('删除失败');
-      throw e;
+    await deletePosition(code, currentAccount);
+    onPositionChange && onPositionChange(code, 'remove');
+    if (onRefetch && typeof onRefetch === 'function') {
+      try {
+        await onRefetch();
+      } catch (_) {
+        // 删除已成功，刷新失败不抛给用户
+      }
     }
   }, [currentAccount, onPositionChange, onRefetch]);
 

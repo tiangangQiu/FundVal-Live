@@ -39,3 +39,80 @@ textarea {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* 持仓明细表格：紧凑列间距（缩小基金信息与预估收益之间空白）+ 整体字号 */
+.account-positions-table .ant-table-thead > tr > th,
+.account-positions-table .ant-table-tbody > tr > td {
+  padding: 10px 5px !important;
+  font-size: 14px !important;
+}
+.account-positions-table .ant-table-thead > tr > th {
+  font-weight: 600;
+}
+.account-positions-table .ant-table-tbody .account-table-cell {
+  font-size: 14px !important;
+}
+.account-positions-table .ant-table-tbody .account-fund-cell {
+  font-size: 14px !important;
+}
+
+/* 移动端：列表上方四个按钮缩小并单行显示 */
+@media (max-width: 767px) {
+  .account-card .ant-card-head-wrapper {
+    flex-wrap: nowrap;
+  }
+  .account-card .ant-card-extra {
+    flex: 1;
+    min-width: 0;
+    margin-left: 8px;
+  }
+  .account-card-actions.account-card-actions {
+    padding: 2px 0;
+  }
+  .account-card-actions .account-action-btn {
+    padding: 2px 8px !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+    white-space: nowrap;
+  }
+  .account-card-actions .account-action-btn .anticon + span {
+    margin-left: 4px;
+  }
+}
+
+/* 移动端：三列占满屏幕宽度（约 45% / 27% / 28%） */
+@media (max-width: 767px) {
+  .account-positions-table {
+    overflow-x: auto !important;
+    max-width: 100% !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .account-positions-table .ant-table-thead > tr > th,
+  .account-positions-table .ant-table-tbody > tr > td {
+    padding: 8px 6px !important;
+  }
+  .account-positions-table .ant-table-body table,
+  .account-positions-table .ant-table-content table {
+    table-layout: fixed !important;
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  .account-positions-table .ant-table-thead > tr > th:nth-child(1),
+  .account-positions-table .ant-table-tbody > tr > td:nth-child(1) {
+    width: 45% !important;
+    min-width: 0 !important;
+  }
+  .account-positions-table .ant-table-thead > tr > th:nth-child(2),
+  .account-positions-table .ant-table-tbody > tr > td:nth-child(2) {
+    width: 27% !important;
+    min-width: 0 !important;
+  }
+  .account-positions-table .ant-table-thead > tr > th:nth-child(3),
+  .account-positions-table .ant-table-tbody > tr > td:nth-child(3) {
+    width: 28% !important;
+    min-width: 0 !important;
+  }
+  .account-positions-table .ant-table-tbody .account-fund-cell {
+    max-width: none !important;
+  }
+}
